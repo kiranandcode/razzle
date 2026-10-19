@@ -7,6 +7,7 @@
 //   razzle decks                  list decks
 //   razzle deck get <id>          print a deck's JSON
 //   razzle deck put <id> < f.json write a deck from stdin
+//   razzle slide add <id> [--hidden] < slide.json   append a slide (PPTist-style JSON, library refs allowed)
 //   razzle record <deck>          start record mode (mic -> takes)
 //   razzle stop                   back to idle (closes the take)
 //   razzle notes <deck>           write speaker notes + per-step script from the takes
@@ -148,6 +149,16 @@ async function main() {
         return print(`saved ${id} (${deck.slides?.length ?? 0} slides, updatedAt ${r.updatedAt})`)
       }
       return die('usage: razzle deck get|put <id>')
+    }
+    case 'slide': {
+      // razzle slide add <deck> [--hidden] < slide.json
+      const [verb, id] = rest
+      if (verb !== 'add' || !id) die('usage: razzle slide add <deckId> [--hidden] < slide.json')
+      await ensureServer()
+      const slide = JSON.parse(fs.readFileSync(0, 'utf8'))
+      const r = await call('POST', `/api/decks/${encodeURIComponent(id)}/slides`, { slide, hidden: rest.includes('--hidden') })
+      print(`added slide ${r.slideIndex + 1}${r.frameId ? ` (${r.frameId})` : ''}${r.warnings?.length ? `; ${r.warnings.join('; ')}` : ''}`)
+      return
     }
     case 'record': {
       const id = rest[0] ?? die('usage: razzle record <deckId>')

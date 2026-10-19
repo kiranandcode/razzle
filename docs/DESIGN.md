@@ -24,7 +24,7 @@ decks/       <deckId>.json  (+ <deckId>/takes/*.json recordings)
 
 ## Server
 
-`http://localhost:7878`. Serves the built editor at `/`, the API at `/api`, and a WebSocket at `/ws`.
+`http://localhost:7878`. Serves the built studio (`tldraw/apps/razzle/dist`, override `RAZZLE_STATIC`) at `/`, `shared/` at `/razzle-shared/`, the API at `/api`, and a WebSocket at `/ws`.
 
 ### HTTP
 
@@ -33,19 +33,22 @@ decks/       <deckId>.json  (+ <deckId>/takes/*.json recordings)
 | GET | `/api/decks` | `[{id, title, updatedAt, slideCount}]` |
 | GET | `/api/decks/:id` | `Deck` |
 | PUT | `/api/decks/:id` | `Deck` → `{ok, updatedAt}`; broadcasts `deck-updated` |
+| POST | `/api/decks/:id/slides` | `{slide, hidden?}`: append one slide written as PPTist-style JSON (library refs `{type:'library', ref, left, top, texts?}` allowed), converted to a tldraw frame in the next grid cell → `{slideIndex, frameId}` |
 | GET | `/api/decks/:id/takes` | `[Take]` |
 | POST | `/api/decks/:id/notes` | generate speaker notes + `razzle.script` from the takes (Claude); returns the new `Deck` |
 | GET | `/api/state` | `PresState` |
 | POST | `/api/nav` | `{action, slide?, step?, source}` (same as the `nav` message) → `{ok, accepted, reason?, state}` |
 | POST | `/api/mode` | `{mode, auto?, deckId?}` → `{ok, state}` |
 | POST | `/api/present` | `{deckId, slide?}`: launches the presenter app (or opens browser windows) |
-| GET | `/api/library` | contents of `shared/library.json` |
+| GET | `/api/library` | `shared/library.json`; `?format=tldraw` gives `shared/library.tldraw.json` |
 
 ```ts
+// Current decks: format 'razzle-tldraw/1' (see "Studio (tldraw)"): {id, title, format, width, height,
+// document, slides: SlideIndex[], updatedAt}. Older PPTist decks are still read:
 interface Deck {
   id: string
   title: string
-  width: number            // canvas px, 1000 by default (PPTist viewport)
+  width: number            // canvas px, 1000
   height: number           // 562.5 for 16:9
   theme: SlideTheme        // PPTist
   slides: Slide[]          // PPTist Slide, with the optional `razzle` field (editor/src/types/slides.ts)
@@ -153,8 +156,8 @@ the last nav does not count toward the new position.
    picks the element id from the slide's text content → `highlight`.
 4. Hidden slides: on `request` (speaker key `h`) or a `make_hidden` intent, Claude
    (Opus) writes one PPTist slide in the Razzle style using `shared/library.json`, sent as
-   `insert-hidden`. The server inserts it after the current slide with `razzle.hidden = true`
-   and broadcasts `hidden-ready`. The main flow is never interrupted: the slide only shows
+   `insert-hidden`. The server converts it (`shared/tl/convert.ts`) into a hidden frame in the
+   backstage row below every slide (so it comes last in reading order) and broadcasts `hidden-ready`. The main flow is never interrupted: the slide only shows
    when the speaker jumps to it (speaker view key `g`, or saying so).
 
 ## Screens

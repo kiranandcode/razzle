@@ -809,6 +809,35 @@ export function insertSlide(deck: DeckV2, ppt: Json, opts: ConvertOptions & { ra
 		const bottom = others.length ? Math.max(...others.map((f) => f.y + num(f.props?.h, H))) : -GRID.gap
 		y = bottom + GRID.gap * 2
 	}
+	return placeSlide(deck, ppt, x, y, opts)
+}
+
+/** Add a regular slide after the last one in reading order, in the next grid cell. Trailing
+ *  hidden slides (backups, generated ones) form the backstage row; it moves down when the
+ *  grid grows into it, so they stay last. */
+export function appendSlide(deck: DeckV2, ppt: Json, opts: ConvertOptions & { razzle?: Json } = {}): { deck: DeckV2, slideIndex: number, frameId: string, warnings: string[] } {
+	const doc = deck.document
+	const W = num(deck.width, SLIDE_W), H = num(deck.height, SLIDE_H)
+	const frames = framesInOrder(doc)
+	let n = frames.length
+	while (n > 0 && frames[n - 1].meta?.razzle?.hidden) n--
+	const regular = frames.slice(0, n), backstage = frames.slice(n)
+	let x = 0, y = 0
+	if (regular.length) {
+		const last = regular[regular.length - 1]
+		const col = Math.round(last.x / (W + GRID.gap))
+		if (col < GRID.perRow - 1) { x = last.x + W + GRID.gap; y = last.y }
+		else y = last.y + H + GRID.gap
+	}
+	const top = backstage.length ? Math.min(...backstage.map((f) => f.y)) : Infinity
+	const need = y + H + GRID.gap * 2
+	if (top < need) for (const f of backstage) (doc.store[f.id] as Json).y += need - top
+	return placeSlide(deck, ppt, x, y, opts)
+}
+
+function placeSlide(deck: DeckV2, ppt: Json, x: number, y: number, opts: ConvertOptions & { razzle?: Json }): { deck: DeckV2, slideIndex: number, frameId: string, warnings: string[] } {
+	const doc = deck.document
+	const W = num(deck.width, SLIDE_W), H = num(deck.height, SLIDE_H)
 	const pageId = Object.values(doc.store).find((r) => r.typeName === 'page')?.id ?? PAGE_ID
 	const siblings = Object.values(doc.store).filter((r) => r.typeName === 'shape' && r.parentId === pageId).map((r) => r.index as string).sort()
 	const index = indexBetween(siblings.length ? siblings[siblings.length - 1] : null, null)

@@ -23,8 +23,8 @@ import {
   type Mode, type NavRequest, type PresState, type AgentStatus, type NavSource,
 } from './state.ts'
 import { claudeJSON, hasClaude, MODELS } from './llm.ts'
-import { escapeHtml, slideText, validateSlide, newId, type Json } from './slides.ts'
-import { insertSlide, isDeckV2, refreshSlides, updateSlideMeta } from '../shared/tl/convert.ts'
+import { escapeHtml, expandLibraryRefs, libraryEntries, slideText, validateSlide, newId, type Json } from './slides.ts'
+import { appendSlide, insertSlide, isDeckV2, refreshSlides, updateSlideMeta } from '../shared/tl/convert.ts'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..')
@@ -288,6 +288,29 @@ async function insertHidden(after: number, slide: Json, prompt: string): Promise
   })
 }
 
+async function addSlide(id: string, raw: unknown, opts: { hidden: boolean }): Promise<{ ok: boolean, error?: string, slideIndex?: number, frameId?: string, warnings?: string[] }> {
+  if (!raw || typeof raw !== 'object') return { ok: false, error: 'body needs {slide}' }
+  let lib: ReturnType<typeof libraryEntries> = []
+  try { lib = libraryEntries(JSON.parse(await fsp.readFile(path.join(SHARED, 'library.json'), 'utf8'))) } catch { /* no library: refs fail below */ }
+  const { slide, errors } = expandLibraryRefs(raw as Json, lib)
+  if (errors.length) return { ok: false, error: errors.slice(0, 5).join('; ') }
+  const errs = validateSlide(slide)
+  if (errs.length) return { ok: false, error: errs.slice(0, 5).join('; ') }
+  if (opts.hidden) slide.razzle = { ...(slide.razzle ?? {}), hidden: true }
+  return withDeckLock(id, async () => {
+    const d = await readDeck(id)
+    if (!d) return { ok: false, error: 'no such deck' }
+    let at: number, frameId: string | undefined, warnings: string[] = []
+    if (isDeckV2(d)) ({ slideIndex: at, frameId, warnings } = appendSlide(d, slide))
+    else { if (d.slides.some(x => x.id === slide.id)) slide.id = newId(); at = d.slides.push(slide) - 1 }
+    d.updatedAt = Date.now()
+    await writeAtomic(deckFile(id), d)
+    if (deck && deck.id === id) { deck = d; refreshFromDeck(); broadcastState() }
+    broadcast({ t: 'deck-updated', deckId: id, updatedAt: d.updatedAt })
+    return { ok: true, slideIndex: at, frameId, warnings: [...new Set(warnings)] }
+  })
+}
+
 // ---------------------------------------------------------------- notes
 
 const NOTES_SCHEMA = {
@@ -447,7 +470,7 @@ async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse) 
 async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
   const p = url.pathname.replace(/\/+$/, '')
   const m = req.method ?? 'GET'
-  const deckMatch = p.match(/^\/api\/decks\/([^/]+)(?:\/(takes|notes))?$/)
+  const deckMatch = p.match(/^\/api\/decks\/([^/]+)(?:\/(takes|notes|slides))?$/)
 
   if (p === '/api/decks' && m === 'GET') return json(res, 200, await listDecks())
   if (deckMatch) {
@@ -474,6 +497,12 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
       if (updatedAt === null) return json(res, 409, { error: 'deck changed since this version; reload and merge' })
       broadcast({ t: 'deck-updated', deckId: id, updatedAt })
       return json(res, 200, { ok: true, updatedAt })
+    }
+    if (sub === 'slides' && m === 'POST') {
+      // add one slide authored as PPTist-style JSON (library refs allowed; see skills/razzle)
+      const b = await body(req)
+      const r = await addSlide(id, b?.slide, { hidden: !!b?.hidden })
+      return r.ok ? json(res, 200, r) : json(res, 400, { error: r.error })
     }
     if (sub === 'takes' && m === 'GET') return json(res, 200, await listTakes(id))
     if (sub === 'notes' && m === 'POST') {

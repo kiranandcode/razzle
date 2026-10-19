@@ -1,6 +1,6 @@
 ---
 name: razzle
-description: Make, edit, rehearse and present slide decks with Razzle (~/Documents/code/razzle), the WYSIWYG slide editor with a speech-driven presenter. Use when asked to start/open a presentation ("prezzi", deck, slides, talk), author slides in Kiran's style, record a rehearsal, generate speaker notes, present with the live agent, or run the director termling.
+description: Make, edit, rehearse and present slide decks with Razzle (~/Documents/code/razzle), the tldraw-based slide editor with a speech-driven presenter. Use when asked to start/open a presentation ("prezzi", deck, slides, talk), author slides in Kiran's style, record a rehearsal, generate speaker notes, present with the live agent, or run the director termling.
 ---
 
 # Razzle
@@ -12,32 +12,44 @@ starts on demand at `http://localhost:7878`. Design and protocol: `docs/DESIGN.m
 
 ```
 razzle decks                 # list
-razzle open <deck>           # editor tab in Vibefox, mirrored next to your termling
+razzle open <deck>           # studio tab in Vibefox, mirrored next to your termling
 ```
 
-The user edits in that critter. Double-clicking the canvas background presents.
+The user edits in that critter. It is tldraw: slides are frames on one canvas. Double-clicking
+empty canvas outside the slides presents.
 
-## Author or change a deck
+## Author slides
 
-Decks are PPTist JSON in `decks/<id>.json`, on a 1000 × 562.5 canvas.
+Write one slide at a time as PPTist-style JSON on a 1000 × 562.5 canvas. The server converts it
+to tldraw and appends it after the last slide:
 
 ```
-razzle deck get <id> > /tmp/d.json      # edit, then
-razzle deck put <id> < /tmp/d.json      # open editors reload
+razzle slide add <deck> [--hidden] < slide.json
 ```
 
-Before writing slides, read `shared/STYLE.md`. Build from `shared/library.json`: copy an
-item's `elements`, offset `left`/`top`, and give every element a fresh `id` (and a fresh
-shared `groupId` per group). Rules:
+```json
+{"id": "locks", "elements": [
+  {"type": "text", "id": "t", "left": 34, "top": 22, "width": 900, "height": 62, "rotate": 0,
+   "content": "<p><span style=\"font-size: 35px;\">Locks and keys</span></p>",
+   "defaultFontName": "Libre Baskerville", "defaultColor": "#000000", "lineHeight": 1.2},
+  {"type": "library", "ref": "glyph-lock", "left": 300, "top": 250}
+ ],
+ "animations": [{"id": "a1", "elId": "t", "effect": "fadeIn", "type": "in", "duration": 0, "trigger": "click"}],
+ "razzle": {"script": ["Line for step 0.", "Line for step 1."],
+            "cues": [{"id": "c1", "phrase": "sinks", "action": "next"}]}}
+```
+
+Before writing slides, read `shared/STYLE.md`. Build from the library (`shared/library.json`;
+refer to an item with `{"type": "library", "ref": <id>, "left", "top", "texts"?}`). Rules:
 
 - Few words. Put one cue glyph on screen per sentence of the talk, revealed one per build step.
-- Builds use PPTist `animations` with `trigger: 'click'`. Every slide has `turningMode: 'no'`.
-- Per-slide speech goes in `slide.razzle`: `script[step]` holds the line for each build step;
-  `cues: [{id, phrase, action: 'next'|'step', atStep?}]` hold the transition words;
-  `hidden: true` marks backup slides.
+- Click-triggered animations become build steps. `razzle.script[step]` is the line for each step,
+  `razzle.cues` are the transition words, and `hidden` marks backup slides.
 
-Check a deck by rendering it with `node shared/tools/render_preview.mjs`
-(see its header for usage) and reading the PNG.
+Check the result: `razzle present <deck> <n>`, or validate it with
+`tldraw/node_modules/.bin/tsx --tsconfig shared/tl/dev/tsconfig.json shared/tl/dev/validate.ts decks/<deck>.json`.
+Whole decks (`razzle deck get/put`) are tldraw documents. Edit those only with care, and keep
+`slides` consistent (the studio re-derives it on every save).
 
 ## Rehearse, then present
 
@@ -48,17 +60,17 @@ razzle notes <deck>      # Claude turns the takes into speaker notes + per-step 
 razzle present <deck> [slide]   # Razzle Presenter: audience on the projector, speaker view on the laptop
 ```
 
-Run the live agent in its own termling next to the deck. It advances once a step's
-script is covered, fires cue words, circles what the speaker refers to, and makes
+Run the live agent in its own termling next to the deck. It advances at the speaker's pause
+once a step's line is said, fires cue words, circles what the speaker refers to, and makes
 hidden slides on request (speaker view `h`, then `g` to show one):
 
 ```
 razzle director
 ```
 
-In the speaker view, `a` toggles auto-advance, `b` blacks out the audience screen and
-`?` lists the keys. The human can always press next. A press within 1.2 s of an agent
-advance is treated as the same advance.
+Slides change instantly; a click or →/Space advances, and right-click or ← goes back. In the
+speaker view, `a` toggles auto-advance, `b` blacks out the audience screen and `?` lists the
+keys. A human press within 1.2 s of an agent advance counts as the same advance.
 
 ## Environment
 
