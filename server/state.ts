@@ -16,6 +16,12 @@ export interface PresState {
   agent: AgentStatus
   takeId: string | null
   lastNav: { at: number, source: NavSource, action: string } | null
+  /** Text of the director's latest `agent` message, so late joiners see it. */
+  agentMessage: string
+  /** Connected screens by role; the audience shows the orb when no speaker screen is up. */
+  screens: { audience: number, speaker: number }
+  /** Audience screen blacked out (`b` in either view). */
+  black: boolean
 }
 
 export interface NavRequest { action: NavAction, slide?: number, step?: number, source: NavSource }
@@ -38,6 +44,7 @@ export function initialState(): PresState {
   return {
     deckId: null, slideIndex: 0, step: 0, stepCount: 1, mode: 'idle', auto: true,
     agent: 'offline', takeId: null, lastNav: null,
+    agentMessage: '', screens: { audience: 0, speaker: 0 }, black: false,
   }
 }
 

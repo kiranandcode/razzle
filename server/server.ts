@@ -200,7 +200,7 @@ function onTranscript(segId: number, text: string, isFinal: boolean) {
     return
   }
   log(`cue "${cue.phrase}" heard -> ${cue.action}`)
-  nav({ action: 'next', source: 'cue' })
+  if (nav({ action: 'next', source: 'cue' }).accepted) broadcast({ t: 'cue-fired', id: cue.id, phrase: cue.phrase })
 }
 
 audio.on('log', (s: string) => log(s))
@@ -491,9 +491,17 @@ server.on('upgrade', (req, socket, head) => {
 
 function setAgent(status: AgentStatus, message?: string, from?: Client) {
   const changed = state.agent !== status
-  state = { ...state, agent: status }
+  state = { ...state, agent: status, agentMessage: message ?? '' }
   broadcast({ t: 'agent', status, message }, from)
   if (changed) broadcastState()
+}
+
+function countScreens() {
+  const n = (role: string) => [...clients].filter(c => c.role === role).length
+  const screens = { audience: n('audience'), speaker: n('speaker') }
+  if (screens.audience === state.screens.audience && screens.speaker === state.screens.speaker) return
+  state = { ...state, screens }
+  broadcastState()
 }
 
 wss.on('connection', (ws: WebSocket) => {
@@ -510,6 +518,11 @@ wss.on('connection', (ws: WebSocket) => {
           if (msg.deckId && state.mode === 'idle' && ['audience', 'speaker'].includes(c.role) && msg.deckId !== state.deckId) await setDeck(msg.deckId)
           if (c.role === 'director') log('director connected')
           send(c, { t: 'state', state })
+          countScreens()
+          break
+        case 'black':
+          state = { ...state, black: !!msg.on }
+          broadcastState()
           break
         case 'nav': {
           const r = nav({ action: msg.action, slide: msg.slide, step: msg.step, source: msg.source ?? (c.role === 'director' ? 'agent' : 'human') })
@@ -554,6 +567,7 @@ wss.on('connection', (ws: WebSocket) => {
   })
   ws.on('close', () => {
     clients.delete(c)
+    countScreens()
     if (c.role === 'director' && ![...clients].some(x => x.role === 'director')) {
       log('director disconnected')
       setAgent('offline')

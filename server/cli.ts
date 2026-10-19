@@ -2,7 +2,7 @@
 //
 //   razzle serve                  run the server in the foreground
 //   razzle director [--dry]       run the live agent (foreground; meant for its own termling)
-//   razzle open <deck>            start the server if needed, open the editor in Vibefox
+//   razzle open <deck> [--no-cove] start the server if needed, open the editor in Vibefox on the Cove board
 //   razzle present <deck> [N]     launch the presenter (or browser windows) at slide N
 //   razzle decks                  list decks
 //   razzle deck get <id>          print a deck's JSON
@@ -15,6 +15,7 @@
 
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
+import net from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -35,6 +36,33 @@ async function call(method: string, p: string, body?: unknown): Promise<any> {
   try { j = JSON.parse(text) } catch { j = text }
   if (!r.ok) die(`${method} ${p}: ${j?.error ?? r.status}`)
   return j
+}
+
+// One request/response on Vibefox's line-based control socket (protocol: vibefox/cove-bridge/vibefox_mcp.py).
+function vibefox(cmd: string, args: Record<string, unknown>): Promise<any> {
+  const sock = process.env.VIBEFOX_SOCKET ?? '/tmp/vibefox/control.sock'
+  const pane = Number(process.env.KITTY_WINDOW_ID)
+  const who = process.env.COVE_SESSION || process.env.KITTY_WINDOW_ID
+    ? { session: process.env.COVE_SESSION ?? '', pane: Number.isInteger(pane) ? pane : null, cwd: process.cwd() }
+    : null
+  return new Promise((resolve, reject) => {
+    const s = net.createConnection(sock)
+    let buf = ''
+    s.setTimeout(15000, () => { s.destroy(); reject(new Error('timeout')) })
+    s.on('error', reject)
+    s.on('connect', () => s.write(JSON.stringify({ id: 1, cmd, args, who, pid: process.pid }) + '\n'))
+    s.on('data', d => {
+      buf += d
+      const nl = buf.indexOf('\n')
+      if (nl < 0) return
+      s.end()
+      try {
+        const rep = JSON.parse(buf.slice(0, nl))
+        if (rep.ok) resolve(rep.result)
+        else reject(new Error(rep.error ?? 'error'))
+      } catch (e) { reject(e) }
+    })
+  })
 }
 
 async function up(): Promise<boolean> {
@@ -77,8 +105,23 @@ async function main() {
       const id = rest[0] ?? die('usage: razzle open <deckId>')
       await ensureServer()
       const url = `${PUBLIC}/#/?deck=${encodeURIComponent(id)}`
-      spawn('open', ['-a', 'Vibefox', url], { stdio: 'ignore', detached: true }).unref()
-      print(url)
+      if (rest.includes('--no-cove')) {
+        spawn('open', ['-a', 'Vibefox', url], { stdio: 'ignore', detached: true }).unref()
+        print(url)
+        return
+      }
+      // Open the tab in Vibefox and walk it onto the Cove board as a page critter,
+      // placed next to the termling that ran us.
+      try {
+        const tab = await vibefox('tabs_open', { url, background: true })
+        const tabId = tab?.id ?? tab?.tab ?? tab?.tabId
+        await vibefox('critter_add', tabId === undefined ? {} : { tab: tabId })
+        print(`${url} (on the Cove board)`)
+      } catch (e) {
+        console.error(`razzle: Vibefox/Cove unavailable (${(e as Error).message}); opening normally`)
+        spawn('open', ['-a', 'Vibefox', url], { stdio: 'ignore', detached: true }).unref()
+        print(url)
+      }
       return
     }
     case 'present': {
