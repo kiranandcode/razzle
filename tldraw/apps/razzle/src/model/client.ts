@@ -2,6 +2,7 @@
 // One shared socket per page that reconnects forever. `useRazzle(select)` reads
 // the live snapshot in React; events go through `on(type, fn)`.
 import { useSyncExternalStore } from 'react'
+import { BASE, PUBLIC } from './base'
 
 export type Role = 'editor' | 'audience' | 'speaker' | 'director' | 'cli'
 export type AgentStatus = 'offline' | 'listening' | 'thinking' | 'acting' | 'ready'
@@ -95,7 +96,7 @@ let hello: { role: Role; deckId?: string } | null = null
 const handlers = new Map<string, Set<(msg: any) => void>>()
 const queue: string[] = []
 
-const wsUrl = () => `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`
+const wsUrl = () => `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}${BASE}/ws`
 
 const dispatch = (msg: ServerMessage) => {
 	switch (msg.t) {
@@ -137,6 +138,7 @@ const open = () => {
 /** Connect (idempotent) and announce our role. */
 export function connect(role: Role, deckId?: string) {
 	hello = { role, deckId }
+	if (PUBLIC) return // the public studio has no server
 	if (!ws) open()
 	else if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: 'hello', ...hello }))
 }

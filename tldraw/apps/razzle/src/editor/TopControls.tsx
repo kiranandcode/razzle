@@ -21,6 +21,7 @@ import {
 	useToasts,
 	useValue,
 } from 'tldraw'
+import { PUBLIC } from '../model/base'
 import { setMode, useRazzle } from '../model/client'
 import { generateNotes } from '../model/deck'
 import { SaveStatus } from '../model/persist'
@@ -98,7 +99,7 @@ function SaveState() {
 		<span
 			className="rz-save-state"
 			data-status={status}
-			title={status === 'local' ? `The server is not reachable${error ? ` (${error})` : ''}; edits are kept in this browser and sent when it is back.` : error || undefined}
+			title={PUBLIC ? 'Kept in this browser only; export the deck from the main menu.' : status === 'local' ? `The server is not reachable${error ? ` (${error})` : ''}; edits are kept in this browser and sent when it is back.` : error || undefined}
 			onClick={() => sync?.flush()}
 		>
 			{STATUS_TEXT[status]}
@@ -109,13 +110,17 @@ function SaveState() {
 export function RazzleSharePanel() {
 	return (
 		<div className="rz-share-zone">
-			<AgentDot />
+			{!PUBLIC && <AgentDot />}
 			<InspectorToggle tab="builds" icon="rz-builds" label="Builds" />
 			<InspectorToggle tab="speech" icon="rz-speech" label="Speech" />
-			<span className="rz-divider" />
-			<RecordButton />
-			<NotesButton />
-			<PresentButton />
+			{!PUBLIC && (
+				<>
+					<span className="rz-divider" />
+					<RecordButton />
+					<NotesButton />
+					<PresentButton />
+				</>
+			)}
 		</div>
 	)
 }

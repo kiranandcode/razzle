@@ -5,3 +5,5 @@ decks/*/takes/
 *.log
 presenter/.build/
 server/.tmp/
+dist-public/
+examples/

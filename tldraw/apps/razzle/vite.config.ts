@@ -31,6 +31,8 @@ function razzleShared(): Plugin {
 }
 
 export default defineConfig({
+	// relative asset URLs: the same build works at / and behind a prefix such as /private/
+	base: './',
 	plugins: [react(), razzleShared()],
 	server: {
 		host: '127.0.0.1',

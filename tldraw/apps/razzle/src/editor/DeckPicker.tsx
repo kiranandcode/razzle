@@ -1,5 +1,6 @@
 // The deck list shown when no deck is open: open one, or start a new one.
 import { useEffect, useState } from 'react'
+import { PUBLIC } from '../model/base'
 import { DeckSummary, listDecks } from '../model/deck'
 import { listLocalDecks } from '../model/persist'
 import { newDeckId } from './Studio'
@@ -30,7 +31,7 @@ export function DeckPicker({ onOpen }: { onOpen(id: string): void }) {
 		<div className="rz-picker">
 			<header className="rz-picker-head">
 				<div className="rz-wordmark">Razzle</div>
-				{offline && <span className="rz-picker-offline">Server not reachable: showing decks kept in this browser</span>}
+				{offline && <span className="rz-picker-offline">{PUBLIC ? 'Decks are kept in this browser; export them from the main menu' : 'Server not reachable: showing decks kept in this browser'}</span>}
 			</header>
 			<main className="rz-picker-main">
 				<form

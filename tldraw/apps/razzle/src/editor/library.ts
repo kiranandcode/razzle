@@ -1,6 +1,7 @@
 // The shape library (shared/library.tldraw.json, made by the PPTist converter): loading,
 // and turning an item into fresh shapes on a slide.
 import { Editor, TLBindingId, TLShapeId, TLShapePartial, createBindingId, createShapeId } from 'tldraw'
+import { BASE } from '../model/base'
 import { slideOf } from './slideOps'
 
 export interface LibraryItem {
@@ -15,7 +16,7 @@ export interface LibraryItem {
 	bindings?: { id: string; type: string; fromId: string; toId: string; props?: Record<string, unknown>; meta?: Record<string, unknown> }[]
 }
 
-const SOURCES = ['/razzle-shared/library.tldraw.json', '/api/library?format=tldraw']
+const SOURCES = [`${BASE}/razzle-shared/library.tldraw.json`, `${BASE}/api/library?format=tldraw`]
 
 let cached: Promise<LibraryItem[]> | null = null
 

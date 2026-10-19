@@ -1,4 +1,5 @@
 // Deck storage on the Razzle server (docs/DESIGN.md, "HTTP").
+import { BASE, PUBLIC } from './base'
 import type { Deck } from './types'
 
 export interface DeckSummary {
@@ -17,19 +18,25 @@ async function json<T>(res: Response): Promise<T> {
 	return res.json() as Promise<T>
 }
 
-const deckUrl = (id: string) => `/api/decks/${encodeURIComponent(id)}`
+/** A server request; the public build has no server, so callers take their browser-only path. */
+function api(path: string, init?: RequestInit): Promise<Response> {
+	if (PUBLIC) return Promise.reject(new Error('no server in the public studio'))
+	return fetch(`${BASE}/api${path}`, init)
+}
 
-export const listDecks = () => fetch('/api/decks').then((r) => json<DeckSummary[]>(r))
-export const loadDeck = (id: string) => fetch(deckUrl(id)).then((r) => json<Deck>(r))
+const deckPath = (id: string) => `/decks/${encodeURIComponent(id)}`
+
+export const listDecks = () => api('/decks').then((r) => json<DeckSummary[]>(r))
+export const loadDeck = (id: string) => api(deckPath(id)).then((r) => json<Deck>(r))
 export const saveDeck = (deck: Deck) =>
-	fetch(deckUrl(deck.id), {
+	api(deckPath(deck.id), {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(deck),
 	}).then((r) => json<{ ok: boolean; updatedAt: number }>(r))
-export const generateNotes = (id: string) => fetch(`${deckUrl(id)}/notes`, { method: 'POST' }).then((r) => json<Deck>(r))
+export const generateNotes = (id: string) => api(`${deckPath(id)}/notes`, { method: 'POST' }).then((r) => json<Deck>(r))
 export const present = (deckId: string, slide?: number) =>
-	fetch('/api/present', {
+	api('/present', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ deckId, slide }),

@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Editor, TLShapeId, Tldraw, loadSnapshot, useEditor, useToasts, useValue } from 'tldraw'
 import { exportPdf, exportPptx, exportReveal } from '../export'
+import { PUBLIC } from '../model/base'
 import { connect } from '../model/client'
-import { DeckSync, OpenedDeck, mergeLocalEdits, openDeck, startDeckSync } from '../model/persist'
+import { DeckSync, OpenedDeck, mergeLocalEdits, openDeck, readLocalDeck, startDeckSync } from '../model/persist'
 import { getSlides } from '../model/slides'
 import { DECK_FORMAT, Deck, SLIDE_H, SLIDE_W } from '../model/types'
 import { editorShapeUtils } from '../shapes'
@@ -48,7 +49,8 @@ export function Studio({ deckId, onOpenDecks }: { deckId: string; onOpenDecks():
 	useEffect(() => {
 		setOpened(null)
 		setError('')
-		const title = fresh.get(deckId)
+		// The public studio has no server: a deck this browser has not kept starts out new.
+		const title = fresh.get(deckId) ?? (PUBLIC && !readLocalDeck(deckId) ? 'Untitled talk' : undefined)
 		if (title !== undefined) {
 			setOpened({ kind: 'new', deck: { id: deckId, title, format: DECK_FORMAT, width: SLIDE_W, height: SLIDE_H, document: null as any, slides: [] } })
 			return
@@ -110,7 +112,7 @@ function StudioEditor({ opened, onOpenDecks }: { opened: Exclude<Opened, { kind:
 			}
 			editor.clearHistory()
 			const undoDefaults = applyRazzleDefaults(editor)
-			const undoDblClick = presentOnOutsideDoubleClick(editor, deck.id)
+			const undoDblClick = PUBLIC ? () => {} : presentOnOutsideDoubleClick(editor, deck.id)
 			const first = getSlides(editor)[0]
 			if (first) zoomToSlide(editor, first, false)
 			connect('editor', deck.id)

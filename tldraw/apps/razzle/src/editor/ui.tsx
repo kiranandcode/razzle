@@ -1,5 +1,6 @@
 // tldraw UI customisation for the studio: the toolbar (with the Slide tool and the library),
 // a main menu trimmed to what applies to a deck, keyboard shortcuts, and translations.
+import { PUBLIC } from '../model/base'
 import {
 	ArrowToolbarItem,
 	AssetToolbarItem,
@@ -103,7 +104,7 @@ export const studioOverrides: TLUiOverrides[] = [
 			add('export-pptx', undefined, () => studioHooks.exportPptx?.())
 			add('export-reveal', undefined, () => studioHooks.exportReveal?.())
 			add('export-pdf', undefined, () => studioHooks.exportPdf?.())
-			add('present-here', undefined, () => studioHooks.presentHere?.(), 'rz-present')
+			if (!PUBLIC) add('present-here', undefined, () => studioHooks.presentHere?.(), 'rz-present')
 			return actions
 		},
 	},
@@ -165,7 +166,7 @@ function RazzleMainMenu() {
 					</TldrawUiMenuGroup>
 				</TldrawUiMenuSubmenu>
 				<TldrawUiMenuActionItem actionId="insert-media" />
-				<TldrawUiMenuActionItem actionId="razzle.present-here" />
+				{!PUBLIC && <TldrawUiMenuActionItem actionId="razzle.present-here" />}
 			</TldrawUiMenuGroup>
 			<TldrawUiMenuGroup id="preferences">
 				<TldrawUiMenuSubmenu id="preferences" label="menu.preferences">
