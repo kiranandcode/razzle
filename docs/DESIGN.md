@@ -35,8 +35,8 @@ decks/       <deckId>.json  (+ <deckId>/takes/*.json recordings)
 | GET | `/api/decks/:id/takes` | `[Take]` |
 | POST | `/api/decks/:id/notes` | generate speaker notes + `razzle.script` from the takes (Claude); returns the new `Deck` |
 | GET | `/api/state` | `PresState` |
-| POST | `/api/nav` | `{action, slide?, step?, source}` (same as the `nav` message) |
-| POST | `/api/mode` | `{mode, auto?}` |
+| POST | `/api/nav` | `{action, slide?, step?, source}` (same as the `nav` message) → `{ok, accepted, reason?, state}` |
+| POST | `/api/mode` | `{mode, auto?, deckId?}` → `{ok, state}` |
 | POST | `/api/present` | `{deckId, slide?}`: launches the presenter app (or opens browser windows) |
 | GET | `/api/library` | contents of `shared/library.json` |
 
@@ -65,6 +65,7 @@ Client → server
 { t: 'hello', role: 'editor' | 'audience' | 'speaker' | 'director' | 'cli', deckId?: string }
 { t: 'nav', action: 'next' | 'prev' | 'goto', slide?: number, step?: number, source: 'human' | 'agent' | 'cue' }
 { t: 'mode', mode: 'idle' | 'record' | 'present', auto?: boolean, deckId?: string }
+{ t: 'steps', slideIndex: number, stepCount: number }            // optional: a screen's step count overrides the server's
 { t: 'request', kind: 'hidden-slide', prompt?: string }          // speaker's covert request (key `h` in speaker view)
 { t: 'highlight', slideIndex: number, elId?: string, rect?: [x, y, w, h], ms?: number }   // director → screens
 { t: 'agent', status: AgentStatus, message?: string }            // director → everyone (drives the orb)
@@ -80,10 +81,13 @@ Server → client
 { t: 'highlight', ... }                       // relayed as sent
 { t: 'deck-updated', deckId: string, updatedAt: number }
 { t: 'hidden-ready', slideIndex: number, prompt: string }    // a generated hidden slide exists; speaker view offers it
+{ t: 'error', message: string }               // to the sender of a rejected `mode` / `insert-hidden`
 ```
 
 ```ts
 type AgentStatus = 'offline' | 'listening' | 'thinking' | 'acting' | 'ready'
+// offline: no director; listening: presenting, nothing in flight; thinking: a model call is running;
+// acting: just sent a nav/highlight/insert; ready: connected while idle/recording, or briefly after a hidden slide lands
 interface PresState {
   deckId: string | null
   slideIndex: number
@@ -107,6 +111,8 @@ send `nav` with `source: 'human'` for keyboard/clicker input.
 - A human `next` within 1200 ms of an agent/cue `next` is dropped (the human pressed
   for the same transition the agent already made). `prev` is never dropped.
 - At most one agent/cue advance per 1500 ms.
+- Agent `next`/`prev` need `auto`; agent `goto` (showing a hidden slide the speaker asked for) does not.
+  Cues fire in record and present mode whether or not `auto` is on; a `step` cue with no steps left does nothing.
 
 ### Audio
 

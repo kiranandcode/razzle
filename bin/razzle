@@ -1,0 +1,4 @@
+#!/bin/sh
+# razzle: see server/cli.ts
+DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/.." && pwd)"
+exec node --no-warnings "$DIR/server/cli.ts" "$@"

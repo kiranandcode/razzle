@@ -4,3 +4,4 @@ dist/
 decks/*/takes/
 *.log
 presenter/.build/
+server/.tmp/

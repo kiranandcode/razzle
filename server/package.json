@@ -1,0 +1,24 @@
+{
+  "name": "razzle-server",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=23"
+  },
+  "scripts": {
+    "start": "node server.ts",
+    "director": "node director.ts",
+    "test": "node --test test/debounce.test.ts test/cues.test.ts && node test/e2e.ts",
+    "test:director": "node test/director.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/ws": "^8.18.2",
+    "typescript": "^7.0.2"
+  }
+}
