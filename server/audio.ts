@@ -304,8 +304,11 @@ export class AudioPipeline extends EventEmitter {
     const padded = pcm.length >= minLen ? pcm : (() => { const p = new Int16Array(minLen); p.set(pcm); return p })()
     // fast pass over the closed segment, so a cue at the end of a phrase
     // fires without waiting for the accurate model
+    // fast pass over the closed segment: a cue at the end of a phrase fires without
+    // waiting for the accurate model, and the director gets the speaker's pause
     if (!flush) this.fast.transcribe(padded).then(text => {
       if (text) this.emit('late-partial', { segId: seg.id, text })
+      this.emit('pause', { segId: seg.id, text })
     }, () => {})
     this.finalQueue = this.finalQueue.then(async () => {
       try {

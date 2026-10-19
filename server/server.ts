@@ -217,6 +217,11 @@ audio.on('partial', ({ segId, text }: { segId: number, text: string }) => {
 audio.on('late-partial', ({ segId, text }: { segId: number, text: string }) => {
   onTranscript(segId, text, false)
 })
+// the speaker paused: the closed segment's fast text, tagged with where it began
+audio.on('pause', ({ segId, text }: { segId: number, text: string }) => {
+  const info = segInfo.get(segId)
+  broadcast({ t: 'transcript', segId, pause: { text, slideIndex: info?.slideIndex ?? state.slideIndex, step: info?.step ?? state.step } })
+})
 audio.on('final', ({ segId, text, t0, t1 }: { segId: number, text: string, t0: number, t1: number }) => {
   const info = segInfo.get(segId)
   segInfo.delete(segId)
@@ -227,7 +232,7 @@ audio.on('final', ({ segId, text, t0, t1 }: { segId: number, text: string, t0: n
     slideId: info?.slideId ?? s?.id ?? '', slideIndex: info?.slideIndex ?? state.slideIndex, step: info?.step ?? state.step,
   }
   log(`final [${u.slideIndex}.${u.step}] ${text}`)
-  broadcast({ t: 'transcript', final: u })
+  broadcast({ t: 'transcript', segId, final: u })
   onTranscript(segId, text, true)
   const take = info?.takeId ? openTakes.get(info.takeId) : null
   if (take) {

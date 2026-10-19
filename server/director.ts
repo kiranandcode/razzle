@@ -17,7 +17,7 @@ import WebSocket from 'ws'
 import { claudeJSON, hasClaude, hasJev, jev, noulYes, MODELS } from './llm.ts'
 import { tokens } from './cues.ts'
 import { elementText, entryLabels, expandLibraryRefs, freshIds, libraryEntries, slideText, validateSlide, type Json, type LibraryEntry } from './slides.ts'
-import type { PresState, AgentStatus } from './state.ts'
+import { move, type PresState, type AgentStatus } from './state.ts'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SHARED = path.join(HERE, '..', 'shared')
@@ -28,8 +28,9 @@ const DRY = args.includes('--dry')
 
 const TUNING = {
   coveredLocal: 0.75, // token overlap at which the step counts as covered without asking a model
+  coveredAtPause: 0.6, // the same, when the speaker has just paused (a sentence boundary)
+  movedOn: 0.6, // overlap of the latest utterance with the NEXT position's script that means the speaker moved on
   askModelAbove: 0.3, // below this the step is clearly not covered yet
-  partialEveryMs: 1200,
   intentConfidence: { next: 0.8, back: 0.8, show_hidden: 0.75, make_hidden: 0.7 },
   highlightMs: 2600,
   highlightRepeatMs: 8000,
@@ -53,15 +54,19 @@ let ws: WebSocket | null = null
 let state: PresState | null = null
 let deck: Json | null = null
 let heard = '' // finals since the last nav
-let partial = ''
 let navKey = '' // identifies the current slide/step + last nav, so stale results are dropped
 let judge: AbortController | null = null
-let lastPartialRun = 0
 const recent: { at: number, text: string }[] = [] // finals, for hidden-slide context
 const lastHighlight = new Map<string, number>()
 let lastMakeHidden = 0
 
 const slide = (): Json | undefined => deck?.slides?.[state?.slideIndex ?? -1]
+/** The script line for the position `next` would move to. */
+function nextScript(): string | undefined {
+  if (!state || !deck?.slides) return undefined
+  const to = move(state, deck.slides, { action: 'next', source: 'agent' })
+  return to ? deck.slides[to.slideIndex]?.razzle?.script?.[to.step] : undefined
+}
 
 function keyOf(s: PresState | null) { return s ? `${s.deckId}|${s.slideIndex}|${s.step}|${s.lastNav?.at ?? 0}` : '' }
 
@@ -196,7 +201,7 @@ function judgementContext(utterance: string) {
 async function judgeHaiku(utterance: string, wantCoverage: boolean, signal: AbortSignal): Promise<Judgement> {
   const ctx = judgementContext(utterance)
   const system = `You are the live director of a research talk. You read the speaker's words as they are transcribed and judge, for the latest utterance:
-1. covered: ${wantCoverage ? 'has the speaker now said the substance of the script for the current build step (paraphrase counts, every point should be touched)?' : 'always null'}
+1. covered: ${wantCoverage ? 'has the speaker now said the substance of the script for the current build step (judge the gist: paraphrase and different wording count; covered once the main point has been made, even if minor words differ; if the speaker has moved on to new material, it is covered)?' : 'always null'}
 2. intent: one of ${Object.entries(INTENTS).map(([k, v]) => `"${k}" = ${v}`).join('; ')}. Use "continue" unless the latest utterance clearly signals another intent.
 3. confidence: 0..1 for the intent.
 4. highlight: if the latest utterance refers to a specific element on the slide ("this box", "the kernel here"), its id from slide.elements; else null.
@@ -265,20 +270,43 @@ function autoAdvanceOn(): boolean {
   return Boolean(state?.auto && state.mode === 'present' && slide()?.razzle?.autoAdvance !== false)
 }
 
-async function decide(utterance: string, isFinal: boolean) {
+/** Did this piece of speech begin at the position now showing? Speech that began
+ *  before a nav belongs to the previous step and must not cover the new one. */
+function atCurrent(p: { slideIndex: number, step: number }, segId: number) {
+  if (ownedFrom !== null && segId >= ownedFrom) return true
+  return !!state && p.slideIndex === state.slideIndex && p.step === state.step
+}
+// After the agent advances on speech segment N, segments after N belong to the new
+// position even if they began before the slide changed (the judgement can lag the pause).
+let advancingOn: number | null = null
+let ownedFrom: number | null = null
+
+// Coverage is judged only when the speaker pauses (the server closed a speech
+// segment) or a final transcript lands, so the slide never moves mid-sentence.
+async function decide(utterance: string, kind: 'pause' | 'final', segId: number) {
   if (!state || state.mode !== 'present' || !slide()) return
+  const isFinal = kind === 'final'
   const s = slide()!
   const script: string | undefined = s.razzle?.script?.[state.step]
-  const said = isFinal ? heard : `${heard} ${partial}`
+  const said = isFinal ? heard : `${heard} ${utterance}`
   const key = navKey
 
-  // 1. coverage, local fast path
+  // 1. coverage, local fast path; or the speaker has already started on the next position
   let wantCoverage = false
   if (script && autoAdvanceOn()) {
     const c = coverage(script, said)
-    if (c >= TUNING.coveredLocal) {
+    const ahead = nextScript()
+    if (ahead && c >= TUNING.askModelAbove && coverage(ahead, utterance) >= TUNING.movedOn) {
+      line(yellow('cover'), `${state.slideIndex}.${state.step} moved on ${dim(`next-script ${coverage(ahead, utterance).toFixed(2)}`)}`)
+      judge?.abort()
+      advancingOn = segId - 1 // this utterance belongs to the new position
+      await nav('next', 'speaker moved on')
+      return
+    }
+    if (c >= (isFinal ? TUNING.coveredLocal : TUNING.coveredAtPause)) {
       line(yellow('cover'), `${state.slideIndex}.${state.step} covered ${dim(`local ${c.toFixed(2)}`)}`)
       judge?.abort()
+      advancingOn = segId
       await nav('next', 'script covered')
       return
     }
@@ -291,6 +319,7 @@ async function decide(utterance: string, isFinal: boolean) {
     if (h) highlight(h.elId, h.why)
   }
   if (!isFinal && !wantCoverage) return
+  if (!utterance.trim()) return
   if (!hasJev() && !hasClaude()) return
 
   // model judgement, latest-wins
@@ -310,6 +339,7 @@ async function decide(utterance: string, isFinal: boolean) {
 
   if (wantCoverage && j.covered) {
     line(yellow('cover'), `${state.slideIndex}.${state.step} covered ${dim(j.via)}`)
+    advancingOn = segId
     await nav('next', 'script covered')
     return
   }
@@ -461,8 +491,10 @@ async function onState(s: PresState) {
   if (!prev || prev.deckId !== s.deckId) await loadDeck(s.deckId)
   const k = keyOf(s)
   if (k !== navKey) {
+    ownedFrom = s.lastNav?.source === 'agent' && advancingOn !== null ? advancingOn + 1 : null
+    advancingOn = null
     navKey = k
-    heard = ''; partial = ''
+    heard = ''
     judge?.abort()
     if (prev && (prev.slideIndex !== s.slideIndex || prev.step !== s.step)) {
       line(dim('slide'), dim(`${s.slideIndex}.${s.step}${s.lastNav ? ` by ${s.lastNav.source}` : ''}`))
@@ -480,18 +512,12 @@ function onMessage(msg: Json) {
       if (msg.final) {
         const text: string = msg.final.text
         recent.push({ at: Date.now(), text }); while (recent.length > 60) recent.shift()
-        // speech counts for the current step if it began there, or ran well past the last nav
-        const f = msg.final
-        if (state && ((f.slideIndex === state.slideIndex && f.step === state.step) || f.t1 > (state.lastNav?.at ?? 0) + 1000)) {
-          heard = `${heard} ${text}`.trim()
-        }
-        partial = ''
         if (state?.mode === 'present') line(dim('heard'), dim(short(text, 90)))
-        void decide(text, true)
-      } else if (msg.partial) {
-        partial = msg.partial
-        const now = Date.now()
-        if (now - lastPartialRun >= TUNING.partialEveryMs) { lastPartialRun = now; void decide(msg.partial, false) }
+        if (!atCurrent(msg.final, msg.segId ?? -1)) break
+        heard = `${heard} ${text}`.trim()
+        void decide(text, 'final', msg.segId ?? -1)
+      } else if (msg.pause) {
+        if (atCurrent(msg.pause, msg.segId ?? -1)) void decide(msg.pause.text ?? '', 'pause', msg.segId ?? -1)
       }
       break
     case 'request':

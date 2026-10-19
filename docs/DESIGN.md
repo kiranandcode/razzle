@@ -76,7 +76,7 @@ Server → client
 
 ```ts
 { t: 'state', state: PresState }
-{ t: 'transcript', partial?: string, final?: Utterance }
+{ t: 'transcript', partial?: string, final?: Utterance, pause?: { text: string, slideIndex: number, step: number } }
 { t: 'agent', status: AgentStatus, message?: string }
 { t: 'highlight', ... }                       // relayed as sent
 { t: 'deck-updated', deckId: string, updatedAt: number }
@@ -136,7 +136,10 @@ the newest words since the last nav fires its action with `source: 'cue'`.
 `node server/director.ts` connects as `role: 'director'`. It can run in a Cove termling;
 it prints a quiet log and reports status through `agent` messages (the orb).
 
-Each final utterance (and a throttled partial) drives one decision:
+Decisions run when the speaker pauses (the server closes a speech segment and sends
+`{t:'transcript', pause:{text, slideIndex, step}}` with the fast model's text, ~0.6 s after
+the pause) and when a final utterance lands, never mid-sentence. Speech that began before
+the last nav does not count toward the new position.
 
 1. Coverage: has the speaker covered this step's `script` entry? Fast path is local
    (token overlap with the script). The judgement uses Jev (`TYPESAFE_API_KEY`,
