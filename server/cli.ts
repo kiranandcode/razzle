@@ -114,9 +114,9 @@ async function main() {
       // Open the tab in Vibefox and walk it onto the Cove board as a page critter,
       // placed next to the termling that ran us.
       try {
-        const tab = await vibefox('tabs_open', { url, background: true })
+        const tab = await vibefox('tabs.open', { url, background: true })
         const tabId = tab?.id ?? tab?.tab ?? tab?.tabId
-        await vibefox('critter_add', tabId === undefined ? {} : { tab: tabId })
+        await vibefox('critter.add', tabId === undefined ? {} : { tab: tabId })
         print(`${url} (on the Cove board)`)
       } catch (e) {
         console.error(`razzle: Vibefox/Cove unavailable (${(e as Error).message}); opening normally`)

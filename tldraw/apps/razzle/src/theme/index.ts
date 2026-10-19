@@ -249,9 +249,22 @@ export const tldrawThemeProps = { themes: razzleThemes, assetUrls: razzleAssetUr
  * black (arrows and lines drawn with the default black start grey, the talks' connector colour).
  * Returns a disposer for the side effect it registers.
  */
+const SNAP_DEFAULTED = 'razzle.snapDefaulted'
+
 export function applyRazzleDefaults(editor: Editor): () => void {
 	if (editor.user.getUserPreferences().colorScheme !== 'light') {
 		editor.user.updateUserPreferences({ colorScheme: 'light' })
+	}
+	// Snap like Google Slides: while dragging or resizing, edges and centres align to other
+	// shapes and to the slide's edges and centre, with guide lines (hold Ctrl to move freely).
+	// Turned on once; after that the Preferences "Always snap" toggle is the user's.
+	try {
+		if (!localStorage.getItem(SNAP_DEFAULTED)) {
+			editor.user.updateUserPreferences({ isSnapMode: true })
+			localStorage.setItem(SNAP_DEFAULTED, '1')
+		}
+	} catch {
+		editor.user.updateUserPreferences({ isSnapMode: true })
 	}
 	editor.run(
 		() => {
