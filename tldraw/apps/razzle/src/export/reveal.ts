@@ -84,6 +84,9 @@ ${sections}
 <script src="${REVEAL}/plugin/notes/notes.js"></script>
 <script>
 Reveal.initialize(${JSON.stringify(config).replace('"__NOTES__"', 'RevealNotes')});
+// click to advance; right-click or shift-click to go back
+document.addEventListener('click', (e) => { if (e.button === 0) e.shiftKey ? Reveal.prev() : Reveal.next() });
+document.addEventListener('contextmenu', (e) => { e.preventDefault(); Reveal.prev() });
 </script>
 </body>
 </html>
