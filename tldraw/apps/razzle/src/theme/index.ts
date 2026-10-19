@@ -15,7 +15,7 @@
 //   stage #bde4e8  pipeline stage                 panel #dcf0f2      result panel
 //   neutral #eeeeee neutral box / layer           code #f3f3f3       code background
 //   runtime #cd8484 runtime, where the bug was    bug #980000        bugs, failures
-//   terracotta #e07a52 Basis conclusion box       cream #efe6d8, cream-dark #e2d6c4  Basis boxes
+//   terracotta #dd7954 Basis conclusion box       cream #efe8db, cream-dark #e0d4c1  Basis boxes
 //   edge #ababab   network edges                  paper #ffffff      white (in the picker)
 //   white #ffffff  tldraw's built-in white (kept; tldraw hides it from the picker)
 //
@@ -99,9 +99,9 @@ const PALETTE: [string, string, string, string][] = [
 	['code', '#f3f3f3', '#f3f3f3', 'Code'],
 	['runtime', '#cd8484', '#e4bebe', 'Runtime'],
 	['bug', '#980000', '#f2d6d6', 'Bug'],
-	['terracotta', '#e07a52', '#f6d9cc', 'Terracotta'],
-	['cream', '#efe6d8', '#efe6d8', 'Cream'],
-	['cream-dark', '#e2d6c4', '#e2d6c4', 'Cream dark'],
+	['terracotta', '#dd7954', '#f6d9cc', 'Terracotta'],
+	['cream', '#efe8db', '#efe8db', 'Cream'],
+	['cream-dark', '#e0d4c1', '#e0d4c1', 'Cream dark'],
 	['edge', '#ababab', '#e3e5e8', 'Network edge'],
 	['paper', '#ffffff', '#ffffff', 'White'],
 	['white', '#ffffff', '#ffffff', 'White'],
