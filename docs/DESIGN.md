@@ -88,7 +88,7 @@ interface PresState {
   deckId: string | null
   slideIndex: number
   step: number
-  stepCount: number           // number of build steps on the current slide (computed by the screens, reported in hello/nav acks)
+  stepCount: number           // build steps on the current slide, computed by the server from the deck (optional client override: {t:'steps', slideIndex, stepCount})
   mode: 'idle' | 'record' | 'present'
   auto: boolean               // agent may advance
   agent: AgentStatus
