@@ -54,3 +54,9 @@ Tests:
 - `npm run test:director`: the director, against real models.
 - `tldraw/node_modules/.bin/tsx --tsconfig shared/tl/dev/tsconfig.json shared/tl/dev/validate.ts decks/demo.json`:
   checks a deck against tldraw's schema.
+
+## Licences
+
+`tldraw/` is a fork of tldraw and stays under the tldraw licence (`tldraw/LICENSE.md`); a
+production deployment needs a tldraw licence key. `editor/` is a fork of PPTist and stays under
+AGPL-3.0 (`editor/LICENSE`). The example talks the style was derived from are not in the repository.
