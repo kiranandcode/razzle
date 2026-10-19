@@ -421,12 +421,17 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     if (!sub && m === 'PUT') {
       const d = await body(req)
       if (!d || typeof d !== 'object' || !Array.isArray(d.slides)) return json(res, 400, { error: 'Deck needs slides[]' })
+      // A deck that carries `updatedAt` was edited from that version; refuse it if the stored
+      // deck has moved on since (e.g. the director inserted a hidden slide), so the writer merges.
       const updatedAt = await withDeckLock(id, async () => {
-        const out = { width: 1000, height: 562.5, title: id, ...d, id, updatedAt: Date.now() }
+        const cur = await readDeck(id)
+        if (typeof d.updatedAt === 'number' && cur?.updatedAt && cur.updatedAt > d.updatedAt) return null
+        const out = { width: 1000, height: 562.5, title: id, ...d, id, updatedAt: Math.max(Date.now(), (cur?.updatedAt ?? 0) + 1) }
         await writeAtomic(deckFile(id), out)
         if (state.deckId === id) { deck = out; stepOverrides.clear(); refreshFromDeck(); broadcastState() }
         return out.updatedAt
       })
+      if (updatedAt === null) return json(res, 409, { error: 'deck changed since this version; reload and merge' })
       broadcast({ t: 'deck-updated', deckId: id, updatedAt })
       return json(res, 200, { ok: true, updatedAt })
     }

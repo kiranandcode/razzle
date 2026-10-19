@@ -109,7 +109,7 @@ const slides = []
   }
   const s1 = scene(0, [0, 1], [[0, 1]], [[110, 128, 'Alex'], [282, 180, 'Kiran']], [300, 132, 'Private calendars'])
   const s2 = scene(1, [5, 1], [[5, 1]], [[46, 180, 'Vendor'], [282, 180, 'Kiran']], [20, 140, 'Conflicting objectives'])
-  const s3 = scene(2, [4, 2, 1], [[4, 1], [4, 2], [1, 2]], [[0, 296, 'Insurance Company', 'right', 100], [282, 180, 'Kiran'], [258, 316, 'Hospital']], [20, 420, 'Sensitive information'])
+  const s3 = scene(2, [4, 2, 1], [[4, 1], [4, 2], [1, 2]], [[-24, 296, 'Insurance Company', 'right', 126], [282, 180, 'Kiran'], [258, 316, 'Hospital']], [20, 420, 'Sensitive information'])
   const s3note = s3.slice(-1)
   const s1note = s1.slice(-1)
   // step 0 shows scene 1 without its note

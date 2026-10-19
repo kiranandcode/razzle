@@ -3591,9 +3591,9 @@
     {
      "type": "text",
      "id": "protocols-60",
-     "left": 0,
+     "left": -24,
      "top": 296,
-     "width": 100,
+     "width": 126,
      "height": 41.25,
      "rotate": 0,
      "content": "<p style=\"text-align: right;\"><span style=\"font-size: 17px;\">Insurance Company</span></p>",
