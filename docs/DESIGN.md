@@ -3,7 +3,8 @@
 Razzle is a WYSIWYG slide editor and a speech-driven presenter.
 
 ```
-editor/      fork of PPTist (Vue 3 + TS, AGPL-3.0): editing, audience view, speaker view
+tldraw/      fork of tldraw (tldraw licence); apps/razzle is the studio: editing, audience view, speaker view, export
+editor/      earlier PPTist-based editor (Vue 3 + TS, AGPL-3.0), superseded by the studio
 server/      Node (>= 23, runs .ts directly): decks, presentation state, mic + whisper, record mode
 director/    (inside server/) the live agent: reads the transcript, moves slides, highlights, makes hidden slides
 presenter/   Swift app: one WKWebView per screen (audience fullscreen on the external display, speaker on the laptop)
@@ -179,3 +180,29 @@ the speaker view is on the main screen. With one screen: the audience view is fu
 sends the tab to the Cove board (a page critter). Double-clicking the slide canvas
 outside edit mode calls `/api/present`. `razzle director` is meant to run in its own
 termling next to the page critter.
+
+## Studio (tldraw)
+
+`tldraw/apps/razzle` (React + the forked tldraw packages, compiled from source).
+Dev: `cd tldraw/apps/razzle && npx vite` (port 5174, proxies `/api` and `/ws` to 7878).
+Types: `../../node_modules/.bin/tsc -b` (TypeScript 7).
+
+Model (`src/model/types.ts`, `src/model/slides.ts`):
+
+- A deck is one tldraw document. Every `frame` at the root of the page is a slide,
+  1000 × 562.5, ordered by reading position (top to bottom, then left to right).
+  The frame's name is the slide title.
+- `frame.meta.razzle: RazzleSlideMeta`: hidden, script per build step, cues, autoAdvance, generated.
+- `shape.meta.build: {step, effect: 'appear' | 'fade' | 'disappear'}`; on a group it applies to
+  all members. Step count = 1 + the highest `step` on the slide. `fade` is the "not yet" grey of the
+  talks (opacity 0.22 before its step).
+- Deck file (`decks/<id>.json`, `format: 'razzle-tldraw/1'`): `{id, title, format, width, height,
+  document, slides, updatedAt}`. `document` is `getSnapshot(store).document` and is the source of
+  truth; `slides: SlideIndex[]` is derived on every save (`buildSlideIndex`) for the server and
+  director: per slide its frame id, title, razzle meta, stepCount, and every shape's text and box in
+  slide coordinates. Director highlights name tldraw shape ids.
+- Registered everywhere an editor is created (studio, screens, export): `src/shapes` (custom shape
+  utils, incl. `razzle-path` for exact library shapes) and `src/theme` (Razzle palette and fonts:
+  serif = Libre Baskerville, mono = Roboto Mono, sans = Inter).
+- Screens render a slide with a read-only tldraw editor on the same document, camera fitted to the
+  frame, with build opacities applied in memory (never saved).
