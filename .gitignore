@@ -6,4 +6,5 @@ decks/*/takes/
 presenter/.build/
 server/.tmp/
 dist-public/
-examples/
+private/
+CLAUDE.local.md

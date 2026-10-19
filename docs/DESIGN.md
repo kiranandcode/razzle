@@ -4,7 +4,6 @@ Razzle is a WYSIWYG slide editor and a speech-driven presenter.
 
 ```
 tldraw/      fork of tldraw (tldraw licence); apps/razzle is the studio: editing, audience view, speaker view, export
-editor/      earlier PPTist-based editor (Vue 3 + TS, AGPL-3.0), superseded by the studio
 server/      Node (>= 23, runs .ts directly): decks, presentation state, mic + whisper, record mode
 director/    (inside server/) the live agent: reads the transcript, moves slides, highlights, makes hidden slides
 presenter/   Swift app: one WKWebView per screen (audience fullscreen on the external display, speaker on the laptop)
@@ -51,7 +50,7 @@ interface Deck {
   width: number            // canvas px, 1000
   height: number           // 562.5 for 16:9
   theme: SlideTheme        // PPTist
-  slides: Slide[]          // PPTist Slide, with the optional `razzle` field (editor/src/types/slides.ts)
+  slides: Slide[]          // PPTist Slide (github.com/pipipi-pikachu/PPTist, src/types/slides.ts), with an optional `razzle` field
   updatedAt?: number
 }
 

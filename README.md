@@ -16,7 +16,6 @@ A slide editor built on tldraw, with a speech-driven presenter.
   step's line, fires transition words, circles what you refer to, and makes hidden slides on request.
 - **Presenter** (`presenter/`): a Swift app that puts the audience view on the projector and
   the speaker view on the laptop.
-- `editor/` is the earlier PPTist-based editor, kept for reference.
 
 ## Setup
 
@@ -58,5 +57,4 @@ Tests:
 ## Licences
 
 `tldraw/` is a fork of tldraw and stays under the tldraw licence (`tldraw/LICENSE.md`); a
-production deployment needs a tldraw licence key. `editor/` is a fork of PPTist and stays under
-AGPL-3.0 (`editor/LICENSE`). The example talks the style was derived from are not in the repository.
+production deployment needs a tldraw licence key.

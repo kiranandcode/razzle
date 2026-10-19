@@ -29,7 +29,8 @@ import { appendSlide, insertSlide, isDeckV2, refreshSlides, updateSlideMeta } fr
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..')
 const PORT = Number(process.env.RAZZLE_PORT ?? 7878)
-const DECKS = path.resolve(process.env.RAZZLE_DECKS_DIR ?? path.join(ROOT, 'decks'))
+// your own decks live in the private companion checkout (private/decks) when it is there
+const DECKS = path.resolve(process.env.RAZZLE_DECKS_DIR ?? (fs.existsSync(path.join(ROOT, 'private', 'decks')) ? path.join(ROOT, 'private', 'decks') : path.join(ROOT, 'decks')))
 const DIST = path.resolve(process.env.RAZZLE_STATIC ?? path.join(ROOT, 'tldraw', 'apps', 'razzle', 'dist'))
 const SHARED = path.join(ROOT, 'shared')
 const PRESENTER_APP = path.join(ROOT, 'presenter', 'build', 'Razzle Presenter.app')
