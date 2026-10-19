@@ -27,6 +27,8 @@ export interface RazzleSlideMeta {
 	autoAdvance?: boolean
 	/** Set on slides the live agent authored during a talk. */
 	generated?: { by: string; prompt: string; at: number }
+	/** Speaker notes (HTML). */
+	notes?: string
 }
 
 /**
@@ -36,10 +38,15 @@ export interface RazzleSlideMeta {
  *  - appear:    hidden before k, shown from k
  *  - fade:      faded (FADED_OPACITY) before k, full from k (the "not yet" grey of the talks)
  *  - disappear: shown before k, hidden from k
+ * With `until: m` (m > k) the effect holds only for steps k..m-1 and the shape returns
+ * to its state before k from step m on (appear: hidden again, fade: faded again,
+ * disappear: shown again).
+ * A shape inside groups shows the product of its own build and each group's build.
  */
 export interface BuildMeta {
 	step: number
 	effect: 'appear' | 'fade' | 'disappear'
+	until?: number
 }
 
 export const FADED_OPACITY = 0.22

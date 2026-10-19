@@ -1,7 +1,11 @@
 // Razzle server: decks, presentation state, the /ws hub, audio + whisper, record mode,
 // cue matching, hidden-slide insertion, notes generation. See docs/DESIGN.md.
 //
-// Env: RAZZLE_PORT (7878), RAZZLE_DECKS_DIR (<repo>/decks), RAZZLE_AUDIO_FILE (stream a
+// Decks are Razzle v2 (`format: 'razzle-tldraw/1'`, a tldraw document + a derived slide
+// index); PPTist decks (format absent) are still served and navigated.
+//
+// Env: RAZZLE_PORT (7878), RAZZLE_DECKS_DIR (<repo>/decks), RAZZLE_STATIC (the static site,
+// default tldraw/apps/razzle/dist, the studio build), RAZZLE_AUDIO_FILE (stream a
 // wav instead of the mic), RAZZLE_MIC (avfoundation audio device, 0), RAZZLE_NO_LAUNCH=1
 // (/api/present does not open windows), RAZZLE_QUIET=1.
 
@@ -20,12 +24,13 @@ import {
 } from './state.ts'
 import { claudeJSON, hasClaude, MODELS } from './llm.ts'
 import { escapeHtml, slideText, validateSlide, newId, type Json } from './slides.ts'
+import { insertSlide, isDeckV2, refreshSlides, updateSlideMeta } from '../shared/tl/convert.ts'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..')
 const PORT = Number(process.env.RAZZLE_PORT ?? 7878)
 const DECKS = path.resolve(process.env.RAZZLE_DECKS_DIR ?? path.join(ROOT, 'decks'))
-const DIST = path.join(ROOT, 'editor', 'dist')
+const DIST = path.resolve(process.env.RAZZLE_STATIC ?? path.join(ROOT, 'tldraw', 'apps', 'razzle', 'dist'))
 const SHARED = path.join(ROOT, 'shared')
 const PRESENTER_APP = path.join(ROOT, 'presenter', 'build', 'Razzle Presenter.app')
 const QUIET = process.env.RAZZLE_QUIET === '1'
@@ -251,10 +256,23 @@ async function insertHidden(after: number, slide: Json, prompt: string): Promise
   return withDeckLock(id, async () => {
     const d = deck && deck.id === id ? deck : await readDeck(id)
     if (!d) return { ok: false, error: 'deck vanished' }
-    const at = Math.min(Math.max(Math.trunc(after) + 1, 0), d.slides.length)
-    const s: Json = { ...slide, razzle: { ...(slide.razzle ?? {}), hidden: true, generated: slide.razzle?.generated ?? { by: 'director', prompt, at: Date.now() } } }
-    if (d.slides.some(x => x.id === s.id)) s.id = newId()
-    d.slides.splice(at, 0, s)
+    const razzle = { ...(slide.razzle ?? {}), hidden: true, generated: slide.razzle?.generated ?? { by: 'director', prompt, at: Date.now() } }
+    let at: number
+    if (isDeckV2(d)) {
+      // converted into a new frame in the backstage row (below every slide, last in reading order)
+      try {
+        const r = insertSlide(d, { ...slide, razzle }, {})
+        at = r.slideIndex
+        if (r.warnings.length) log(`hidden slide conversion: ${[...new Set(r.warnings)].slice(0, 3).join('; ')}`)
+      } catch (e) {
+        return { ok: false, error: `conversion failed: ${(e as Error).message}` }
+      }
+    } else {
+      at = Math.min(Math.max(Math.trunc(after) + 1, 0), d.slides.length)
+      const s: Json = { ...slide, razzle }
+      if (d.slides.some(x => x.id === s.id)) s.id = newId()
+      d.slides.splice(at, 0, s)
+    }
     d.updatedAt = Date.now()
     await writeAtomic(deckFile(id), d)
     if (deck && deck.id === id) {
@@ -333,9 +351,14 @@ Rules:
       if (!s) continue
       const steps = stepCountOf(s as any)
       const script = Array.from({ length: steps }, (_, k) => String(r.script?.[k] ?? ''))
-      s.remark = (r.notes ?? []).filter(Boolean).map(p => `<p>${escapeHtml(String(p))}</p>`).join('')
-      s.razzle = { ...(s.razzle ?? {}), script }
+      const notes = (r.notes ?? []).filter(Boolean).map(p => `<p>${escapeHtml(String(p))}</p>`).join('')
+      if (isDeckV2(fresh)) updateSlideMeta(fresh, s.id, { script, notes }) // the frame's meta.razzle is the source of truth
+      else {
+        s.remark = notes
+        s.razzle = { ...(s.razzle ?? {}), script }
+      }
     }
+    if (isDeckV2(fresh)) fresh.slides = refreshSlides(fresh)
     fresh.updatedAt = Date.now()
     await writeAtomic(deckFile(id), fresh)
     if (deck?.id === id) { deck = fresh; refreshFromDeck() }
@@ -383,9 +406,21 @@ async function body(req: http.IncomingMessage): Promise<any> {
   return s ? JSON.parse(s) : {}
 }
 
+async function serveShared(res: http.ServerResponse, rel: string) {
+  const file = path.join(SHARED, path.normalize(rel).replace(/^(\.\.[/\\])+/, ''))
+  if (!file.startsWith(SHARED + path.sep)) { res.writeHead(403); res.end(); return }
+  try {
+    const data = await fsp.readFile(file)
+    res.writeHead(200, { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store' })
+    res.end(data)
+  } catch { res.writeHead(404); res.end() }
+}
+
 async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse) {
   const url = new URL(req.url ?? '/', 'http://x')
   let rel = decodeURIComponent(url.pathname)
+  // shared/ (library.tldraw.json, fonts) as the studio's dev server serves it
+  if (rel.startsWith('/razzle-shared/')) return serveShared(res, rel.slice('/razzle-shared/'.length))
   const file = path.join(DIST, path.normalize(rel).replace(/^(\.\.[/\\])+/, ''))
   if (!file.startsWith(DIST)) { res.writeHead(403); res.end(); return }
   let target = file
@@ -404,7 +439,7 @@ async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse) 
   } catch {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
     res.end(`<!doctype html><title>Razzle</title><body style="font:16px system-ui;padding:2em">
-<h1>Razzle server</h1><p>The editor is not built yet (<code>editor/dist</code> is missing).</p>
+<h1>Razzle server</h1><p>The studio is not built yet (<code>${escapeHtml(path.relative(ROOT, DIST) || DIST)}</code> is missing: <code>cd tldraw/apps/razzle && npx vite build</code>).</p>
 <p>API: <a href="/api/decks">/api/decks</a> · <a href="/api/state">/api/state</a></p></body>`)
   }
 }
@@ -471,7 +506,9 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     return json(res, 200, { ok: true, launched: how, state })
   }
   if (p === '/api/library' && m === 'GET') {
-    try { return json(res, 200, JSON.parse(await fsp.readFile(path.join(SHARED, 'library.json'), 'utf8'))) } catch { return json(res, 200, []) }
+    // ?format=tldraw: the studio's library (shapes); default: the PPTist library the director uses
+    const file = url.searchParams.get('format') === 'tldraw' ? 'library.tldraw.json' : 'library.json'
+    try { return json(res, 200, JSON.parse(await fsp.readFile(path.join(SHARED, file), 'utf8'))) } catch { return json(res, 200, []) }
   }
   if (p === '/api/debug' && m === 'GET') {
     const at = url.searchParams.get('arrival')

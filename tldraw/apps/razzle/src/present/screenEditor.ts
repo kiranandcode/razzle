@@ -11,7 +11,7 @@ import {
 	defaultShapeUtils,
 	loadSnapshot,
 } from 'tldraw'
-import { shapeUtils } from '../shapes'
+import { editorShapeUtils, shapeUtils } from '../shapes'
 import * as theme from '../theme'
 import type { Deck } from '../model/types'
 
@@ -46,7 +46,8 @@ export function makeStore(deck: Deck) {
 /** Props every screen editor shares (theme, private light-mode user, no UI). */
 export const screenEditorProps = {
 	...themeProps,
-	shapeUtils,
+	// exact converter colours / line heights, no text halos (src/shapes)
+	shapeUtils: editorShapeUtils,
 	user: presentUser,
 	colorScheme: 'light' as const,
 	hideUi: true,

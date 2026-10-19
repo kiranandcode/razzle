@@ -26,9 +26,11 @@ export interface PresState {
 
 export interface NavRequest { action: NavAction, slide?: number, step?: number, source: NavSource }
 
-// Minimal structural view of a PPTist slide that navigation needs.
+// Minimal structural view of a slide that navigation needs: a v2 slide index entry
+// (`stepCount`, deck format razzle-tldraw/1) or a PPTist slide (`animations`).
 export interface NavSlide {
   id: string
+  stepCount?: number
   elements?: { id: string }[]
   animations?: { elId: string, trigger: string }[]
   razzle?: { hidden?: boolean }
@@ -48,10 +50,11 @@ export function initialState(): PresState {
   }
 }
 
-/** Build steps of a slide: 1 + the number of click-triggered animation groups
+/** Build steps of a slide: a v2 slide's `stepCount`; for a PPTist slide, 1 + the number of click-triggered animation groups
  *  (mirrors PPTist's `formatedAnimations`: a group starts at each `click`, and a
  *  leading non-click group plays automatically, so it is not a step). */
 export function stepCountOf(slide: NavSlide | undefined): number {
+  if (typeof slide?.stepCount === 'number' && Number.isFinite(slide.stepCount)) return Math.max(1, Math.trunc(slide.stepCount))
   if (!slide?.animations?.length) return 1
   const ids = new Set((slide.elements ?? []).map(e => e.id))
   let clicks = 0

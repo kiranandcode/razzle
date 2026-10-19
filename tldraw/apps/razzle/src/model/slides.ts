@@ -46,6 +46,7 @@ export function stepCount(editor: Editor, frame: TLShape): number {
 	for (const s of slideShapes(editor, frame)) {
 		const b = (s.meta as any)?.build as BuildMeta | undefined
 		if (b && Number.isInteger(b.step) && b.step > max) max = b.step
+		if (b && Number.isInteger(b.until) && b.until! > max) max = b.until!
 	}
 	return max + 1
 }
@@ -53,7 +54,7 @@ export function stepCount(editor: Editor, frame: TLShape): number {
 /** Opacity multiplier for a build at a step: 0 hidden, FADED_OPACITY faded, 1 shown. */
 export function buildOpacity(build: BuildMeta | undefined, step: number): number {
 	if (!build) return 1
-	const reached = step >= build.step
+	const reached = step >= build.step && !(Number.isInteger(build.until) && step >= build.until!)
 	switch (build.effect) {
 		case 'appear':
 			return reached ? 1 : 0

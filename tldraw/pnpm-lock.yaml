@@ -292,6 +292,9 @@ importers:
 
   apps/razzle:
     dependencies:
+      '@tldraw/assets':
+        specifier: workspace:*
+        version: link:../../packages/assets
       pptxgenjs:
         specifier: ^4.0.1
         version: 4.0.1

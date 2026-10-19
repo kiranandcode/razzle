@@ -9,6 +9,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import WebSocket from 'ws'
+import { convertDeck } from '../../shared/tl/convert.ts'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const TMP = path.join(HERE, '..', '.tmp', 'e2e')
@@ -55,7 +56,8 @@ function makeAudio(): { file: string, cueEndMs: number } {
   return { file, cueEndMs: 1500 + (last / 16000) * 1000 }
 }
 
-const deck = (id: string, cue: boolean) => ({
+// PPTist slides converted to a Razzle v2 deck (frame ids are `shape:<slide id>`)
+const deck = (id: string, cue: boolean) => convertDeck({
   id, title: `E2E ${id}`, width: 1000, height: 562.5,
   theme: { backgroundColor: '#fff', themeColors: ['#000'], fontColor: '#000', fontName: 'Inter', outline: {}, shadow: { h: 0, v: 0, blur: 0, color: '#000' } },
   slides: [0, 1, 2].map(i => ({
@@ -64,6 +66,7 @@ const deck = (id: string, cue: boolean) => ({
     ...(i === 0 && cue ? { razzle: { cues: [{ id: 'cue-sinks', phrase: 'sinks', action: 'next' }] } } : {}),
   })),
 })
+const sid = (id: string) => `shape:${id}`
 
 async function api(method: string, p: string, body?: unknown): Promise<any> {
   const r = await fetch(BASE + p, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
@@ -127,7 +130,7 @@ async function main() {
     const firstFinal = await waitFor(s => s.msg.t === 'transcript' && s.msg.final, 20000)
     check(partials.length > 0, `partial transcripts arrived (${partials.length}), e.g. "${partials[0]?.msg.partial ?? ''}"`)
     check(Boolean(firstFinal), `final transcript arrived: "${firstFinal?.msg.final?.text ?? ''}"`)
-    check(firstFinal?.msg.final?.slideId === 'e2e-s0' && firstFinal?.msg.final?.slideIndex === 0, 'first final is tagged with slide 0')
+    check(firstFinal?.msg.final?.slideId === sid('e2e-s0') && firstFinal?.msg.final?.slideIndex === 0, 'first final is tagged with slide 0')
     const sinksFinal = await waitFor(s => s.msg.t === 'transcript' && /sinks/i.test(s.msg.final?.text ?? ''), 20000)
     if (sinksFinal) console.log(`  final latency: end of that sentence -> its final transcript = ${sinksFinal.at - cueHeardAt} ms`)
     const firstPartial = partials[0]
@@ -169,8 +172,8 @@ async function main() {
     for (const u of us) console.log(`    [slide ${u.slideIndex} ${u.slideId} step ${u.step}] ${u.text}`)
     check(us.length >= 3, `take holds ${us.length} utterances`)
     const first = us.filter((u: any) => /welcome|sinks/i.test(u.text)), rest = us.filter((u: any) => !/welcome|sinks/i.test(u.text))
-    check(first.length > 0 && first.every((u: any) => u.slideId === 'e2e-rec-s0' && u.slideIndex === 0), 'sentence 1 (before the click) tagged with slide 0')
-    check(rest.length > 0 && rest.every((u: any) => u.slideId === 'e2e-rec-s1' && u.slideIndex === 1), 'sentences 2-3 (after the click) tagged with slide 1')
+    check(first.length > 0 && first.every((u: any) => u.slideId === sid('e2e-rec-s0') && u.slideIndex === 0), 'sentence 1 (before the click) tagged with slide 0')
+    check(rest.length > 0 && rest.every((u: any) => u.slideId === sid('e2e-rec-s1') && u.slideIndex === 1), 'sentences 2-3 (after the click) tagged with slide 1')
     const takes = await api('GET', '/api/decks/e2e-rec/takes')
     check(Array.isArray(takes) && takes.some((t: any) => t.id === takeId), 'GET /api/decks/:id/takes lists the take')
     ws2.close()

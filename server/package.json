@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node server.ts",
     "director": "node director.ts",
-    "test": "node --test test/debounce.test.ts test/cues.test.ts && node test/e2e.ts",
+    "test": "node --test test/debounce.test.ts test/cues.test.ts test/v2.test.ts && node test/e2e.ts",
     "test:director": "node test/director.ts",
     "typecheck": "tsc -p ."
   },

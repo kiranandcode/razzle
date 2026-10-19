@@ -7,6 +7,10 @@
 //
 //   node director.ts [--url http://localhost:7878] [--dry]
 //
+// Decks: Razzle v2 (tldraw document + `slides` index: element ids are tldraw shape ids, so a
+// highlight names a shape) or PPTist. Hidden slides are written as PPTist JSON either way; the
+// server converts them into a new frame of a v2 deck.
+//
 // Judgements use Jev when TYPESAFE_API_KEY is set, else Claude Haiku. All LLM calls are
 // async and latest-wins: a newer utterance or a slide change aborts the older call.
 
@@ -408,6 +412,21 @@ Exemplars (full JSON):
 ${ex.map(e => JSON.stringify(e)).join('\n')}`
 }
 
+/** The deck's theme for the prompt: a PPTist deck's own, else the Razzle theme (shared/themes.json). */
+function deckTheme(): Json | undefined {
+  if (deck?.theme) return deck.theme
+  try { return JSON.parse(fs.readFileSync(path.join(SHARED, 'themes.json'), 'utf8')).find((t: Json) => t.id === 'razzle')?.theme } catch { return undefined }
+}
+
+/** The current slide for the prompt: PPTist JSON (as an exemplar), or for a v2 deck the
+ *  slide index entry (title, step count and each element's text and box). */
+function slideForPrompt(s: Json): Json {
+  if (deck?.format === 'razzle-tldraw/1') {
+    return { title: s?.title, steps: s?.stepCount, elements: (s?.elements ?? []).map((e: Json) => ({ type: e.type, text: e.text, box: [e.left, e.top, e.width, e.height].map((v: number) => Math.round(v)) })) }
+  }
+  return trimSlide(s)
+}
+
 function trimSlide(s: Json): Json {
   // drop large inline payloads (data: URLs) so the exemplar stays small
   return JSON.parse(JSON.stringify(s, (k, v) => (typeof v === 'string' && v.startsWith('data:') && v.length > 200 ? 'data:…' : v)))
@@ -447,8 +466,8 @@ Prefer few, large elements: a title, then a diagram or 3-5 short points. Use the
   const user = JSON.stringify({
     request: prompt,
     whatTheSpeakerJustSaid: short(talk, 3000),
-    deck: { title: deck.title, theme: deck.theme, width: deck.width, height: deck.height },
-    currentSlide: { index: after, text: slideText(cur), json: trimSlide(cur) },
+    deck: { title: deck.title, theme: deckTheme(), width: deck.width, height: deck.height },
+    currentSlide: { index: after, text: slideText(cur), layout: slideForPrompt(cur) },
     neighbours: [deck.slides[after - 1], deck.slides[after + 1]].filter(Boolean).map((x: Json) => short(slideText(x), 300)),
   }, null, 1)
 

@@ -1,0 +1,16 @@
+{
+	"//": "Headless tldraw schema for dev tools (run with tldraw's tsx: see validate.ts). 'tldraw' resolves to a shim over @tldraw/tlschema + @tldraw/validate sources.",
+	"compilerOptions": {
+		"target": "es2022",
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"allowImportingTsExtensions": true,
+		"noEmit": true,
+		"strict": true,
+		"skipLibCheck": true,
+		"jsx": "react-jsx",
+		"paths": {
+			"tldraw": ["./tldraw-shim.ts"]
+		}
+	}
+}

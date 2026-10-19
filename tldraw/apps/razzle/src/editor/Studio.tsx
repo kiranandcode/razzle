@@ -2,7 +2,7 @@
 // and the Builds / Speech inspector (right) around the canvas.
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Editor, GeoShapeUtil, TLShapeId, Tldraw, loadSnapshot, useEditor, useToasts, useValue } from 'tldraw'
+import { Editor, TLShapeId, Tldraw, loadSnapshot, useEditor, useToasts, useValue } from 'tldraw'
 import { exportPdf, exportPptx, exportReveal } from '../export'
 import { connect } from '../model/client'
 import { DeckSync, OpenedDeck, mergeLocalEdits, openDeck, startDeckSync } from '../model/persist'
@@ -23,7 +23,7 @@ import { studioComponents, studioHooks, studioOverrides } from './ui'
 import './studio.css'
 
 /** Geo labels without tldraw's white halo (slides are flat). */
-const shapeUtils = [...editorShapeUtils, GeoShapeUtil.configure({ showTextOutline: false })]
+const shapeUtils = editorShapeUtils
 const options = { maxPages: 1 }
 
 /** Decks made in the picker that have not reached the server yet: id → title. */

@@ -1,0 +1,5 @@
+{
+  "//": "shared/tl: the PPTist -> tldraw converter and record builders (ES modules, run by Node with type stripping and by vite)",
+  "private": true,
+  "type": "module"
+}

@@ -1,0 +1,174 @@
+{
+  "hash": "80e3f7df",
+  "configHash": "34e4986e",
+  "lockfileHash": "e3b0c442",
+  "browserHash": "998105c7",
+  "optimized": {
+    "@tiptap/core": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/@tiptap+core@3.13.0_@tiptap+pm@3.13.0/node_modules/@tiptap/core/dist/index.js",
+      "file": "@tiptap_core.js",
+      "fileHash": "71ed6b9a",
+      "needsInterop": false
+    },
+    "@tiptap/extension-code": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/@tiptap+extension-code@3.13.0_@tiptap+core@3.13.0_@tiptap+pm@3.13.0_/node_modules/@tiptap/extension-code/dist/index.js",
+      "file": "@tiptap_extension-code.js",
+      "fileHash": "a35ad400",
+      "needsInterop": false
+    },
+    "@tiptap/extension-highlight": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/@tiptap+extension-highlight@3.13.0_@tiptap+core@3.13.0_@tiptap+pm@3.13.0_/node_modules/@tiptap/extension-highlight/dist/index.js",
+      "file": "@tiptap_extension-highlight.js",
+      "fileHash": "6f6182ef",
+      "needsInterop": false
+    },
+    "@tiptap/extension-list": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/@tiptap+extension-list@3.13.0_@tiptap+core@3.13.0_@tiptap+pm@3.13.0__@tiptap+pm@3.13.0/node_modules/@tiptap/extension-list/dist/index.js",
+      "file": "@tiptap_extension-list.js",
+      "fileHash": "c9d18356",
+      "needsInterop": false
+    },
+    "@tiptap/extension-typography": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/@tiptap+extension-typography@3.13.0_@tiptap+core@3.13.0_@tiptap+pm@3.13.0_/node_modules/@tiptap/extension-typography/dist/index.js",
+      "file": "@tiptap_extension-typography.js",
+      "fileHash": "8420404c",
+      "needsInterop": false
+    },
+    "@tiptap/pm/model": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/@tiptap+pm@3.13.0/node_modules/@tiptap/pm/dist/model/index.js",
+      "file": "@tiptap_pm_model.js",
+      "fileHash": "de94f631",
+      "needsInterop": false
+    },
+    "@tiptap/pm/state": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/@tiptap+pm@3.13.0/node_modules/@tiptap/pm/dist/state/index.js",
+      "file": "@tiptap_pm_state.js",
+      "fileHash": "69c57402",
+      "needsInterop": false
+    },
+    "@tiptap/react": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/@tiptap+react@3.13.0_@floating-ui+dom@1.6.1_@tiptap+core@3.13.0_@tiptap+pm@3.13.0__@tip_56c6f67ac1d4ab5dd6af58a52af73848/node_modules/@tiptap/react/dist/index.js",
+      "file": "@tiptap_react.js",
+      "fileHash": "e73bdff1",
+      "needsInterop": false
+    },
+    "@tiptap/starter-kit": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/@tiptap+starter-kit@3.13.0/node_modules/@tiptap/starter-kit/dist/index.js",
+      "file": "@tiptap_starter-kit.js",
+      "fileHash": "a40eafb1",
+      "needsInterop": false
+    },
+    "classnames": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/classnames@2.5.1/node_modules/classnames/index.js",
+      "file": "classnames.js",
+      "fileHash": "d5dcb6b6",
+      "needsInterop": true
+    },
+    "eventemitter3": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/eventemitter3@4.0.7/node_modules/eventemitter3/index.js",
+      "file": "eventemitter3.js",
+      "fileHash": "7bf3f4c6",
+      "needsInterop": true
+    },
+    "idb": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/idb@7.1.1/node_modules/idb/build/index.js",
+      "file": "idb.js",
+      "fileHash": "5b2276ee",
+      "needsInterop": false
+    },
+    "lodash.isequal": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/lodash.isequal@4.5.0/node_modules/lodash.isequal/index.js",
+      "file": "lodash__isequal.js",
+      "fileHash": "b9c614ad",
+      "needsInterop": true
+    },
+    "lodash.isequalwith": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/lodash.isequalwith@4.4.0/node_modules/lodash.isequalwith/index.js",
+      "file": "lodash__isequalwith.js",
+      "fileHash": "f90f8859",
+      "needsInterop": true
+    },
+    "lodash.throttle": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/lodash.throttle@4.1.1/node_modules/lodash.throttle/index.js",
+      "file": "lodash__throttle.js",
+      "fileHash": "9a0482ff",
+      "needsInterop": true
+    },
+    "lodash.uniq": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/lodash.uniq@4.5.0/node_modules/lodash.uniq/index.js",
+      "file": "lodash__uniq.js",
+      "fileHash": "fc61b353",
+      "needsInterop": true
+    },
+    "lz-string": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/lz-string@1.5.0/node_modules/lz-string/libs/lz-string.js",
+      "file": "lz-string.js",
+      "fileHash": "f4e8d99d",
+      "needsInterop": true
+    },
+    "radix-ui": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/radix-ui@1.4.2_@types+react-dom@19.2.3_@types+react@19.2.7__@types+react@19.2.7_react-d_d9c3c2aaa093d5537fca3712ed71037a/node_modules/radix-ui/dist/index.mjs",
+      "file": "radix-ui.js",
+      "fileHash": "d49eb626",
+      "needsInterop": false
+    },
+    "rbush": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/rbush@3.0.1/node_modules/rbush/rbush.min.js",
+      "file": "rbush.js",
+      "fileHash": "e4c90be1",
+      "needsInterop": true
+    },
+    "react-dom": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/react-dom@19.2.1_react@19.2.1/node_modules/react-dom/index.js",
+      "file": "react-dom.js",
+      "fileHash": "87421670",
+      "needsInterop": true
+    },
+    "react-dom/client": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/react-dom@19.2.1_react@19.2.1/node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "5e20310c",
+      "needsInterop": true
+    },
+    "react": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/react@19.2.1/node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "001421b0",
+      "needsInterop": true
+    },
+    "react/jsx-dev-runtime": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/react@19.2.1/node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "3d0dc1be",
+      "needsInterop": true
+    },
+    "react/jsx-runtime": {
+      "src": "../../../../../../tldraw/node_modules/.pnpm/react@19.2.1/node_modules/react/jsx-runtime.js",
+      "file": "react_jsx-runtime.js",
+      "fileHash": "02f6d49e",
+      "needsInterop": true
+    }
+  },
+  "chunks": {
+    "dist-BXDg6PWw": {
+      "file": "dist-BXDg6PWw.js",
+      "isDynamicEntry": false
+    },
+    "dist-DWKtjjz8": {
+      "file": "dist-DWKtjjz8.js",
+      "isDynamicEntry": false
+    },
+    "rolldown-runtime-DC62tzP2": {
+      "file": "rolldown-runtime-DC62tzP2.js",
+      "isDynamicEntry": false
+    },
+    "shim-DN5d0GWO": {
+      "file": "shim-DN5d0GWO.js",
+      "isDynamicEntry": false
+    },
+    "state-Bmzocs-0": {
+      "file": "state-Bmzocs-0.js",
+      "isDynamicEntry": false
+    }
+  }
+}

@@ -1,5 +1,5 @@
-// PPTist slide helpers shared by the server and the director: text extraction,
-// shape validation, and fresh ids.
+// Slide helpers shared by the server and the director: text extraction (v2 slide index
+// and PPTist), PPTist validation (the director still writes PPTist slides), and fresh ids.
 
 import { randomBytes } from 'node:crypto'
 
@@ -17,8 +17,10 @@ export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-/** Visible text of an element (text boxes, shape text, table cells, chart labels, latex). */
+/** Visible text of an element: a v2 slide-index element (`text` string, tldraw shape id),
+ *  or a PPTist element (text boxes, shape text, table cells, chart labels, latex). */
 export function elementText(el: Json): string {
+  if (typeof el?.text === 'string') return el.text
   switch (el?.type) {
     case 'text': return stripHtml(el.content)
     case 'shape': return el.text?.content ? stripHtml(el.text.content) : ''

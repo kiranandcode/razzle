@@ -2,14 +2,16 @@
 //   node test/director.ts
 // Checks: the script for slide 0 is covered -> agent advance; "look at this box, the scheduler"
 // -> highlight of the scheduler element; the orb gets status updates; a speaker `request`
-// -> a valid hidden slide is inserted after the current slide and `hidden-ready` is broadcast.
+// -> a valid hidden slide (Opus writes PPTist JSON; the server converts it) is added to the v2
+// deck as a new frame in the backstage row and `hidden-ready` is broadcast.
 
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import WebSocket from 'ws'
-import { validateSlide } from '../slides.ts'
+import { convertDeck } from '../../shared/tl/convert.ts'
+import { checkV2Slide } from './v2check.ts'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const TMP = path.join(HERE, '..', '.tmp', 'director')
@@ -49,7 +51,8 @@ const box = (id: string, left: number, label: string) => ({
   fixedRatio: false, fill: '#eef', outline: { style: 'solid', width: 2, color: '#334' },
   text: { content: `<p style="text-align:center">${label}</p>`, defaultFontName: 'Inter', defaultColor: '#222', align: 'middle' },
 })
-const deck = {
+// PPTist slides converted to a Razzle v2 deck: frames `shape:b0`…, shapes `shape:<slide>-<element>`
+const deck = convertDeck({
   id: 'dir', title: 'Director test', width: 1000, height: 562.5,
   theme: { backgroundColor: '#fff', themeColors: ['#335'], fontColor: '#222', fontName: 'Inter', outline: {}, shadow: { h: 0, v: 0, blur: 0, color: '#000' } },
   slides: [
@@ -57,7 +60,7 @@ const deck = {
     { id: 'b1', elements: [text('t1', 60, 40, 880, 80, '<p><strong>Inside the kernel</strong></p>'), box('k1', 100, 'Interrupts'), box('k2', 390, 'Scheduler'), box('k3', 680, 'Memory')] },
     { id: 'b2', elements: [text('t2', 60, 40, 880, 80, '<p>Thanks</p>')] },
   ],
-}
+})
 
 async function main() {
   const file = makeAudio()
@@ -91,7 +94,7 @@ async function main() {
     const adv = await waitFor(m => m.t === 'state' && m.state.slideIndex === 1 && m.state.lastNav?.source === 'agent', 60000)
     check(Boolean(adv), 'director advanced slide 0 -> 1 when its script was covered')
     const hl = await waitFor(m => m.t === 'highlight', 30000)
-    check(hl?.msg.elId === 'k2', `highlight of the scheduler box (got ${hl?.msg.elId})`)
+    check(hl?.msg.elId === 'shape:b1-k2', `highlight of the scheduler box (got ${hl?.msg.elId})`)
     const statuses = [...new Set(seen.filter(s => s.msg.t === 'agent').map(s => s.msg.status))]
     check(statuses.includes('listening') && statuses.includes('acting'), `orb statuses seen: ${statuses.join(', ')}`)
 
@@ -101,8 +104,9 @@ async function main() {
     check(Boolean(ready), `hidden-ready broadcast after ${((Date.now() - t0) / 1000).toFixed(1)} s`)
     const d = await (await fetch(`${BASE}/api/decks/dir`)).json()
     const hs = d.slides[ready?.msg.slideIndex ?? -1]
-    check(Boolean(hs?.razzle?.hidden) && ready?.msg.slideIndex === 2, `hidden slide inserted directly after slide 1 (index ${ready?.msg.slideIndex})`)
-    check(hs && validateSlide(hs).length === 0, `inserted slide validates (${hs ? validateSlide(hs).join('; ') || 'no problems' : 'missing'}), ${hs?.elements?.length} elements`)
+    check(Boolean(hs?.razzle?.hidden) && ready?.msg.slideIndex === 3, `hidden slide added as a frame in the backstage row, last in reading order (index ${ready?.msg.slideIndex})`)
+    const problems = hs ? checkV2Slide(d, hs.id) : ['missing']
+    check(problems.length === 0, `inserted frame validates against the tldraw schema (${problems.join('; ') || 'no problems'}), ${hs?.elements?.length} elements`)
     fs.writeFileSync(path.join(TMP, 'hidden-slide.json'), JSON.stringify(hs, null, 2))
     const st = await (await fetch(`${BASE}/api/state`)).json()
     check(st.slideIndex === 1, 'the main flow was not interrupted (still on slide 1)')

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Builds decks/demo.json: slides recreated from the TEE and "Who watches the watchers" talks
+// Builds shared/tools/demo.pptist.json (PPTist) and decks/demo.json (the same deck converted to
+// the tldraw v2 format by shared/tl/convert.ts): slides recreated from the TEE and "Who watches the watchers" talks
 // in the Razzle visual language, with click builds, a cue-glyph slide, and a hidden slide.
 //   node shared/tools/build_demo.mjs
 import { writeFileSync, readFileSync } from 'node:fs'
@@ -10,6 +11,7 @@ import {
   highlightRegion, docFrame, bubble, pendingBox, title, annotation, move, normalise, group,
 } from './kit.mjs'
 import { GLYPHS } from './glyphs.mjs'
+import { convertDeck } from '../tl/convert.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const themes = JSON.parse(readFileSync(resolve(here, '../themes.json'), 'utf8'))
@@ -336,6 +338,11 @@ const deck = {
   theme: themes.find(t => t.id === 'razzle').theme,
   slides,
 }
-writeFileSync(resolve(here, '../../decks/demo.json'), JSON.stringify(deck, null, 1) + '\n')
-console.log('decks/demo.json:', slides.length, 'slides;', slides.map(s => `${s.id}(${new Set(s.animations.filter(a => a.trigger === 'click').map(a => a.id)).size} steps)`).join(' '))
+// the PPTist original (render_preview.mjs, parity checks) and the studio deck (tldraw v2)
+writeFileSync(resolve(here, 'demo.pptist.json'), JSON.stringify(deck, null, 1) + '\n')
+const v2 = convertDeck({ ...deck, updatedAt: 0 })
+delete v2.warnings
+v2.updatedAt = Date.now()
+writeFileSync(resolve(here, '../../decks/demo.json'), JSON.stringify(v2, null, 1) + '\n')
+console.log('shared/tools/demo.pptist.json + decks/demo.json (v2):', slides.length, 'slides;', slides.map(s => `${s.id}(${new Set(s.animations.filter(a => a.trigger === 'click').map(a => a.id)).size} steps)`).join(' '))
 void nid; void FADE_NODE
