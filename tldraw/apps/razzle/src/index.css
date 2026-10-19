@@ -1,7 +1,25 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;700&display=swap');
 @import url('tldraw/tldraw.css');
 
+/* Razzle fonts (shared/fonts), for the UI; the canvas loads them through the theme. */
+@font-face { font-family: 'Libre Baskerville'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/LibreBaskerville-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'Libre Baskerville'; font-style: italic; font-weight: 400; font-display: swap; src: url('/fonts/LibreBaskerville-Italic.woff2') format('woff2'); }
+@font-face { font-family: 'Libre Baskerville'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/LibreBaskerville-Bold.woff2') format('woff2'); }
+@font-face { font-family: 'Libre Baskerville'; font-style: italic; font-weight: 700; font-display: swap; src: url('/fonts/LibreBaskerville-BoldItalic.woff2') format('woff2'); }
+@font-face { font-family: 'Roboto Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/RobotoMono-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'Roboto Mono'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/RobotoMono-Bold.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/Inter-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/Inter-Medium.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/Inter-SemiBold.woff2') format('woff2'); }
+
+html,
+body,
+#root {
+	height: 100%;
+	margin: 0;
+}
+
 body {
-	font-family: 'Inter', sans-serif;
+	font-family: 'Inter', system-ui, sans-serif;
 	overscroll-behavior: none;
+	-webkit-font-smoothing: antialiased;
 }
