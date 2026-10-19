@@ -1,0 +1,110 @@
+[
+  {
+    "id": "razzle",
+    "name": "Razzle (default)",
+    "theme": {
+      "backgroundColor": "#ffffff",
+      "themeColors": [
+        "#4fafc3",
+        "#4285f4",
+        "#ffab40",
+        "#77c7d0",
+        "#cd8484",
+        "#eeeeee"
+      ],
+      "fontColor": "#595959",
+      "fontName": "Libre Baskerville",
+      "outline": {
+        "style": "solid",
+        "width": 2,
+        "color": "#000000"
+      },
+      "shadow": {
+        "h": 0,
+        "v": 0,
+        "blur": 0,
+        "color": "rgba(0,0,0,0)"
+      }
+    },
+    "fonts": {
+      "serif": "Libre Baskerville",
+      "mono": "Roboto Mono",
+      "sans": "Inter"
+    },
+    "titleColor": "#000000",
+    "palette": {
+      "ink": "#000000",
+      "body": "#595959",
+      "faded": "#cccccc",
+      "muted": "#666666",
+      "teal": "#4fafc3",
+      "blue": "#4285f4",
+      "orange": "#ffab40",
+      "tealLayer": "#77c7d0",
+      "gray": "#eeeeee",
+      "runtime": "#cd8484",
+      "stageTeal": "#bde4e8",
+      "stageBlue": "#aac8fa",
+      "stageGray": "#e3e5e8",
+      "stagePink": "#e4bebe",
+      "panelTeal": "#dcf0f2",
+      "bubbleTeal": "#b8e2e6",
+      "bubbleBlue": "#a8c7f9",
+      "pending": "#f6f8f9",
+      "frameBlue": "#4a86e8",
+      "frameTeal": "#59bbc5",
+      "highlight": "#a8c7f9",
+      "line": "#ababab",
+      "stat": "#0097a7",
+      "bug": "#980000",
+      "code": "#f3f3f3",
+      "crab": "#e08b6a",
+      "white": "#ffffff",
+      "clear": "rgba(255,255,255,0)"
+    }
+  },
+  {
+    "id": "basis-blog",
+    "name": "Basis Blog",
+    "theme": {
+      "backgroundColor": "#fffcfc",
+      "themeColors": [
+        "#dd7954",
+        "#efe8db",
+        "#e0d4c1",
+        "#311317",
+        "#6e5d57",
+        "#d8c9b4"
+      ],
+      "fontColor": "#311317",
+      "fontName": "Libre Baskerville",
+      "outline": {
+        "style": "solid",
+        "width": 1.5,
+        "color": "#311317"
+      },
+      "shadow": {
+        "h": 0,
+        "v": 0,
+        "blur": 0,
+        "color": "rgba(0,0,0,0)"
+      }
+    },
+    "fonts": {
+      "serif": "Libre Baskerville",
+      "mono": "Roboto Mono",
+      "sans": "Inter"
+    },
+    "titleColor": "#311317",
+    "palette": {
+      "ink": "#311317",
+      "muted": "#6e5d57",
+      "bg": "#fffcfc",
+      "cream": "#efe8db",
+      "creamDark": "#e0d4c1",
+      "rule": "#d8c9b4",
+      "terracotta": "#dd7954",
+      "terracottaDark": "#b85c39"
+    }
+  }
+]
