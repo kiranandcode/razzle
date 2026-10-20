@@ -8,3 +8,4 @@ server/.tmp/
 dist-public/
 private/
 CLAUDE.local.md
+/models/

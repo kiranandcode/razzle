@@ -30,17 +30,41 @@ function razzleShared(): Plugin {
 	}
 }
 
+// The public build has no server and no browser mic: every module of src/asr/ that the studio
+// imports resolves to a stub there, so no speech code (or transformers.js) reaches dist-public.
+const PUBLIC_BUILD = process.env.VITE_RAZZLE_PUBLIC === '1'
+const ASR_STUB = resolve(import.meta.dirname, 'src/asr/publicStub.ts')
+
+function razzlePublicAsr(): Plugin {
+	return {
+		name: 'razzle-public-asr',
+		enforce: 'pre',
+		resolveId(id, importer) {
+			if (!PUBLIC_BUILD || !importer) return null
+			if (/(^|\/)asr\/(mic|MicToggle|engine|worker)(\.tsx?)?$/.test(id) && !importer.includes('/src/asr/')) return ASR_STUB
+			return null
+		},
+	}
+}
+
+// Razzle server the dev server proxies to (RAZZLE_PORT, as the server reads it)
+const SERVER = `127.0.0.1:${process.env.RAZZLE_PORT ?? 7878}`
+
 export default defineConfig({
 	// relative asset URLs: the same build works at / and behind a prefix such as /private/
 	base: './',
-	plugins: [react(), razzleShared()],
+	plugins: [razzlePublicAsr(), react(), razzleShared()],
+	// the speech worker (src/asr/worker.ts) code-splits transformers.js
+	worker: { format: 'es' },
 	server: {
 		host: '127.0.0.1',
 		port: 5174,
 		proxy: {
 			// Razzle server (server/server.ts)
-			'/api': { target: 'http://127.0.0.1:7878', changeOrigin: true },
-			'/ws': { target: 'ws://127.0.0.1:7878', ws: true },
+			'/api': { target: `http://${SERVER}`, changeOrigin: true },
+			'/ws': { target: `ws://${SERVER}`, ws: true },
+			// speech-model files for the browser mic (server/fetch-models.sh)
+			'/models': { target: `http://${SERVER}`, changeOrigin: true },
 		},
 	},
 })

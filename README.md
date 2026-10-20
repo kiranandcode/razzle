@@ -11,7 +11,8 @@ A slide editor built on tldraw, with a speech-driven presenter.
 - **Screens** (same app): the audience and speaker views. Slides change instantly on a click or a
   key; there are no transitions.
 - **Server** (`server/`): decks, presentation state, mic capture, local whisper transcription,
-  record mode, cue words, speaker-note generation.
+  record mode, cue words, speaker-note generation. With `RAZZLE_AUDIO=browser` (a hosted server
+  with no mic) the studio page transcribes instead, with Whisper in the browser.
 - **Director** (`server/director.ts`): the live agent. It advances at your pause once you've said a
   step's line, fires transition words, circles what you refer to, and makes hidden slides on request.
 - **Presenter** (`presenter/`): a Swift app that puts the audience view on the projector and
@@ -27,7 +28,8 @@ cd ../presenter && ./build.sh              # Razzle Presenter.app
 ```
 
 Requirements: Node ≥ 23, `ffmpeg`, `whisper-server` (whisper.cpp) with the models named in
-`docs/DESIGN.md`, and `ANTHROPIC_API_KEY`. `TYPESAFE_API_KEY` is optional; it enables Jev.
+`docs/DESIGN.md` (not needed with `RAZZLE_AUDIO=browser`; run `server/fetch-models.sh` for the
+browser's models instead), and `ANTHROPIC_API_KEY`. `TYPESAFE_API_KEY` is optional; it enables Jev.
 Without a tldraw licence key, tldraw shows a small "Get a license for production" mark.
 
 ## Use
@@ -51,6 +53,8 @@ the protocol and design are in `docs/DESIGN.md`.
 Tests:
 - `cd server && npm test`: unit tests, plus end to end with real whisper.
 - `npm run test:director`: the director, against real models.
+- `npm run test:browser-asr [-- --device wasm]`: the browser mic end to end in headless Chrome
+  (fake microphone, `RAZZLE_AUDIO=browser`, the studio dev server and the director).
 - `tldraw/node_modules/.bin/tsx --tsconfig shared/tl/dev/tsconfig.json shared/tl/dev/validate.ts decks/demo.json`:
   checks a deck against tldraw's schema.
 

@@ -375,21 +375,47 @@
 
 .rz-main {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) 360px;
+	grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);
 	gap: 22px;
 	padding: 20px 22px 14px;
 	min-height: 0;
+}
+/* every column sizes to the window, never to its content (a wide slide or long script line) */
+.rz-main > * {
+	min-width: 0;
 }
 .rz-current {
 	display: grid;
 	grid-template-rows: minmax(0, 1fr) auto;
 	gap: 22px;
 	min-height: 0;
+	min-width: 0;
 }
 .rz-stage-wrap {
 	min-height: 0;
+	min-width: 0;
 	position: relative;
+	overflow: hidden;
 	cursor: pointer;
+}
+/* narrow windows: the side panels go below the current slide */
+@media (max-width: 760px) {
+	.rz-main {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+		gap: 14px;
+		padding: 12px 14px 10px;
+	}
+	.rz-line {
+		font-size: 21px;
+	}
+	/* the side panels scroll below the slide; the next slide stays a small preview */
+	.rz-side {
+		overflow-y: auto;
+	}
+	.rz-next-stage {
+		width: min(100%, 360px);
+	}
 }
 .rz-script {
 	padding: 2px 6px 4px;

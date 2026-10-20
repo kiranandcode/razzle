@@ -1,6 +1,12 @@
-// LLM clients: Claude (Anthropic SDK) and Jev (typesafe.ai systemone).
+// LLM clients: Claude and Jev (typesafe.ai systemone).
+//
+// Claude is reached one of two ways: the Anthropic API when ANTHROPIC_API_KEY (or
+// ANTHROPIC_AUTH_TOKEN) is set, else the Claude Code CLI (`claude -p`) logged in with the
+// user's account (`claude login` or `claude setup-token` as the service user), as on a hosted box.
+// RAZZLE_LLM=api|cli forces one; RAZZLE_CLAUDE_BIN names the CLI (default `claude` on PATH).
 
 import Anthropic from '@anthropic-ai/sdk'
+import { spawn, spawnSync } from 'node:child_process'
 
 export const MODELS = {
   haiku: 'claude-haiku-4-5-20251001',
@@ -14,8 +20,20 @@ export function claude(): Anthropic {
   return client
 }
 
+const CLAUDE_BIN = process.env.RAZZLE_CLAUDE_BIN ?? 'claude'
+const hasApiKey = () => Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)
+let cliFound: boolean | null = null
+const hasCli = () => (cliFound ??= spawnSync(CLAUDE_BIN, ['--version'], { stdio: 'ignore', timeout: 10_000 }).status === 0)
+
+export function claudeBackend(): 'api' | 'cli' | null {
+  const forced = process.env.RAZZLE_LLM
+  if (forced === 'api') return hasApiKey() ? 'api' : null
+  if (forced === 'cli') return hasCli() ? 'cli' : null
+  return hasApiKey() ? 'api' : hasCli() ? 'cli' : null
+}
+
 export function hasClaude(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)
+  return claudeBackend() !== null
 }
 
 /** First balanced JSON object or array in `text`. */
@@ -54,6 +72,7 @@ function textOf(msg: Anthropic.Message): string {
 /** One Claude call that returns parsed JSON. Uses structured output when a schema is given,
  *  falling back to prompt-only JSON if the model rejects the format. */
 export async function claudeJSON<T = unknown>(c: JSONCall): Promise<T> {
+  if (claudeBackend() === 'cli') return claudeCliJSON<T>(c)
   const base = {
     model: c.model,
     max_tokens: c.maxTokens ?? 2048,
@@ -81,6 +100,40 @@ export async function claudeJSON<T = unknown>(c: JSONCall): Promise<T> {
   return extractJSON(textOf(msg)) as T
 }
 
+/** The same call through `claude -p`: no tools, no session saved, structured output when a
+ *  schema is given (that takes a second turn), parsed from the CLI's JSON result. */
+function claudeCliJSON<T>(c: JSONCall): Promise<T> {
+  const args = ['-p', '--model', c.model, '--output-format', 'json', '--max-turns', '3', '--tools', '',
+    '--no-session-persistence', '--strict-mcp-config', '--system-prompt', c.system]
+  if (c.schema) args.push('--json-schema', JSON.stringify(c.schema))
+  if (c.effort) args.push('--effort', c.effort)
+  const env = { ...process.env }
+  delete env.ANTHROPIC_API_KEY // the CLI would prefer it to the logged-in account
+  delete env.CLAUDECODE
+  return new Promise<T>((resolve, reject) => {
+    const child = spawn(CLAUDE_BIN, args, { env, stdio: ['pipe', 'pipe', 'pipe'] })
+    let out = '', err = ''
+    child.stdout.on('data', d => { out += d })
+    child.stderr.on('data', d => { err += d })
+    const abort = () => { child.kill('SIGTERM'); reject(new Error('aborted')) }
+    c.signal?.addEventListener('abort', abort, { once: true })
+    const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new Error('claude -p timed out')) }, 600_000)
+    child.on('error', e => { clearTimeout(timer); reject(e) })
+    child.on('close', code => {
+      clearTimeout(timer)
+      c.signal?.removeEventListener('abort', abort)
+      try {
+        const r = JSON.parse(out) as { is_error?: boolean, result?: string, structured_output?: unknown }
+        if (r.is_error) throw new Error(`claude -p: ${String(r.result ?? '').slice(0, 300)}`)
+        resolve((r.structured_output ?? extractJSON(r.result ?? '')) as T)
+      } catch (e) {
+        reject(code === 0 ? e : new Error(`claude -p exited ${code}: ${(err || out).slice(0, 300)}`))
+      }
+    })
+    child.stdin.end(c.user)
+  })
+}
+
 // ---------- Jev (typesafe.ai systemone) ----------
 
 export type JevQuestion =
@@ -93,13 +146,14 @@ export type JevAnswer =
   | { type: 'choice', choice: string, probabilities?: Record<string, number>, confidence?: number }
   | { type: 'score', score?: number, [k: string]: unknown }
 
-export function hasJev(): boolean { return Boolean(process.env.TYPESAFE_API_KEY) }
+const jevKey = () => process.env.TYPESAFE_API_KEY || process.env.JEV_API_KEY
+export function hasJev(): boolean { return Boolean(jevKey()) }
 
 export async function jev(state: unknown, questions: Record<string, JevQuestion>, signal?: AbortSignal):
   Promise<Record<string, JevAnswer>> {
   const r = await fetch('https://api.typesafe.ai/v1/systemone', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.TYPESAFE_API_KEY}` },
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${jevKey()}` },
     body: JSON.stringify({ state, model: 'jev-latest', questions }),
     signal,
   })

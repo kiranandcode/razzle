@@ -28,6 +28,8 @@ const SHARED = path.join(HERE, '..', 'shared')
 const args = process.argv.slice(2)
 const argVal = (k: string) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined }
 const BASE = (argVal('--url') ?? process.env.RAZZLE_URL ?? `http://127.0.0.1:${process.env.RAZZLE_PORT ?? 7878}`).replace(/\/$/, '')
+// a hosted server with sign-in lets same-box processes through with this token (auth.ts)
+const AUTH: Record<string, string> = process.env.RAZZLE_INTERNAL_TOKEN ? { authorization: `Bearer ${process.env.RAZZLE_INTERNAL_TOKEN}` } : {}
 const DRY = args.includes('--dry')
 
 const TUNING = {
@@ -36,6 +38,7 @@ const TUNING = {
   movedOn: 0.6, // overlap of the latest utterance with the NEXT position's script that means the speaker moved on
   askModelAbove: 0.3, // below this the step is clearly not covered yet
   intentConfidence: { next: 0.8, back: 0.8, show_hidden: 0.75, make_hidden: 0.7 },
+  targetConfidence: 0.5, // Jev's confidence needed to circle the element it picked
   highlightMs: 2600,
   highlightRepeatMs: 8000,
   makeHiddenRepeatMs: 60000,
@@ -105,7 +108,7 @@ function sendWs(msg: unknown) {
 async function loadDeck(id: string | null) {
   if (!id) { deck = null; return }
   try {
-    const r = await fetch(`${BASE}/api/decks/${encodeURIComponent(id)}`)
+    const r = await fetch(`${BASE}/api/decks/${encodeURIComponent(id)}`, { headers: AUTH })
     deck = r.ok ? await r.json() as Json : null
     if (deck) line(dim('deck'), `${deck.title ?? id} · ${deck.slides?.length ?? 0} slides`)
   } catch (e) { line(red('error'), `deck load: ${(e as Error).message}`) }
@@ -116,7 +119,7 @@ async function nav(action: 'next' | 'prev' | 'goto', why: string, slideIdx?: num
   acting()
   try {
     const r = await fetch(`${BASE}/api/nav`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: { 'content-type': 'application/json', ...AUTH },
       body: JSON.stringify({ action, slide: slideIdx, source: 'agent' }),
     })
     const j = await r.json() as { accepted?: boolean, reason?: string, state?: PresState }
@@ -243,24 +246,24 @@ async function judgeJev(utterance: string, wantCoverage: boolean, signal: AbortS
   }
   if (wantCoverage) questions.covered = {
     type: 'noul',
-    instructions: 'Has the speaker now said the substance of slide.script (the plan for the current build step), judging by heardOnThisStep? Paraphrase counts.',
-    criteria: 'yes only if every point of the script has been touched',
+    instructions: 'Has the speaker now said the substance of `slide.script` (the plan for the current build step), judging by `heardOnThisStep`? Paraphrase counts.',
+    criteria: {
+      true: 'every point of the script has been made, in any wording',
+      false: 'some point of the script has not been said yet',
+    },
+  }
+  // which element "this box here" means: a choice over the slide's elements, in the same call
+  const targets = DEICTIC.test(utterance) ? ctx.slide.elements.filter((e: Json) => e.text).slice(0, 200) : []
+  if (targets.length) questions.target = {
+    type: 'choice',
+    instructions: 'Which element of the slide is the speaker pointing at or naming in `latest`?',
+    criteria: { none: 'no particular element', ...Object.fromEntries(targets.map((e: Json) => [e.id, `${e.type}: ${e.text}`])) },
   }
   const a = await jev(ctx, questions, signal)
   const intent = a.intent && a.intent.type === 'choice' && a.intent.choice in INTENTS ? a.intent.choice as Intent : 'continue'
   const conf = a.intent && a.intent.type === 'choice' ? (a.intent.confidence ?? a.intent.probabilities?.[intent] ?? 0) : 0
-  let hl: string | null = null
-  if (DEICTIC.test(utterance) && hasClaude()) {
-    // Jev answers the cheap questions; the element pick is Haiku's
-    try {
-      const j = await claudeJSON<Json>({
-        model: MODELS.haiku, maxTokens: 100, signal,
-        system: 'Pick the slide element the speaker is referring to in "latest". Reply JSON {"id": "<element id>"|null}.',
-        user: JSON.stringify({ latest: utterance, elements: ctx.slide.elements }),
-      })
-      hl = typeof j.id === 'string' ? j.id : null
-    } catch { /* highlight is optional */ }
-  }
+  const t = a.target && a.target.type === 'choice' ? a.target : null
+  const hl = t && t.choice !== 'none' && (t.confidence ?? 0) >= TUNING.targetConfidence ? t.choice : null
   return {
     covered: a.covered ? noulYes((a.covered as any).noul) : null,
     intent, confidence: Number(conf) || 0, highlight: hl,
@@ -441,7 +444,7 @@ function makeHidden(prompt: string, why: string): Promise<void> {
 
 async function makeHiddenNow(prompt: string, why: string) {
   if (!deck || !state) return
-  if (!hasClaude()) { line(red('error'), 'hidden slide needs ANTHROPIC_API_KEY'); return }
+  if (!hasClaude()) { line(red('error'), 'hidden slide needs Claude (an API key or a logged-in claude CLI)'); return }
   const after = state.slideIndex
   const cur = deck.slides[after]
   const style = readShared('STYLE.md')
@@ -552,7 +555,7 @@ let connectedOnce = false
 let warned = false
 function connect() {
   const url = BASE.replace(/^http/, 'ws') + '/ws'
-  const sock = new WebSocket(url)
+  const sock = new WebSocket(url, { headers: AUTH })
   sock.on('open', () => {
     ws = sock; reported = null; warned = false
     sock.send(JSON.stringify({ t: 'hello', role: 'director' }))

@@ -35,6 +35,7 @@ import {
 	DefaultSizeStyle,
 	Editor,
 	TLDefaultColor,
+	TLShape,
 	TLTheme,
 	TLThemeFont,
 	TLThemes,
@@ -276,7 +277,17 @@ export function applyRazzleDefaults(editor: Editor): () => void {
 		},
 		{ history: 'ignore' }
 	)
-	return editor.sideEffects.registerBeforeCreateHandler('shape', (shape, source) => {
+	// A slide (a frame at the root of the page) is never translucent: tldraw would otherwise give
+	// a new frame the opacity last picked for new shapes, and every shape on the slide is
+	// multiplied by its frame's opacity.
+	const isSlide = (shape: TLShape) => shape.type === 'frame' && shape.parentId === editor.getCurrentPageId()
+	const opaque = <T extends TLShape>(shape: T): T => (isSlide(shape) && shape.opacity !== 1 ? { ...shape, opacity: 1 } : shape)
+	const translucent = editor.getCurrentPageShapes().filter((s) => isSlide(s) && s.opacity !== 1)
+	if (translucent.length) {
+		editor.run(() => editor.updateShapes(translucent.map((s) => ({ id: s.id, type: s.type, opacity: 1 }))), { history: 'ignore' })
+	}
+	const undoCreate = editor.sideEffects.registerBeforeCreateHandler('shape', (shape, source) => {
+		shape = opaque(shape)
 		if (source !== 'user') return shape
 		if ((shape.type === 'arrow' || shape.type === 'line') && (shape.props as any).color === 'black') {
 			const next = editor.getInstanceState().stylesForNextShape[DefaultColorStyle.id]
@@ -286,4 +297,9 @@ export function applyRazzleDefaults(editor: Editor): () => void {
 		}
 		return shape
 	})
+	const undoChange = editor.sideEffects.registerBeforeChangeHandler('shape', (_prev, next) => opaque(next))
+	return () => {
+		undoCreate()
+		undoChange()
+	}
 }

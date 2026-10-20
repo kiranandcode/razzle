@@ -37,7 +37,9 @@ if options.dryRunLayout {
 }
 
 let app = NSApplication.shared
-let delegate = AppDelegate(options: options)
+// No arguments of our own: started from Finder or by a razzle-presenter:// link
+let ownArgs = CommandLine.arguments.dropFirst().filter { !$0.hasPrefix("-psn_") && !$0.hasPrefix("-NS") && !$0.hasPrefix("-Apple") }
+let delegate = AppDelegate(options: options, awaitLink: ownArgs.isEmpty)
 app.delegate = delegate
 app.setActivationPolicy(.regular)
 app.run()

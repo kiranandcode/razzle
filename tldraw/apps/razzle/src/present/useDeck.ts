@@ -2,10 +2,21 @@
 // server says it changed (`deck-updated`) or a generated hidden slide landed
 // (`hidden-ready`, normally preceded by `deck-updated`; reload anyway).
 // Every successful load bumps `version`; stages reload their store on it.
+// The public build has no server: the deck is the copy the studio keeps in this browser
+// (`deck-updated` then comes from the in-browser presenter when the studio saves).
 import { useEffect, useRef, useState } from 'react'
+import { PUBLIC } from '../model/base'
 import { on } from '../model/client'
 import { loadDeck } from '../model/deck'
+import { readLocalDeck } from '../model/localStore'
 import type { Deck } from '../model/types'
+
+async function fetchDeck(id: string): Promise<Deck> {
+	if (!PUBLIC) return loadDeck(id)
+	const copy = readLocalDeck(id)
+	if (!copy) throw new Error('this browser has no copy of the deck; open it in the studio first')
+	return { ...copy.deck, updatedAt: copy.savedAt }
+}
 
 export interface LoadedDeck {
 	deck: Deck | null
@@ -30,7 +41,7 @@ export function useDeck(deckId: string | null): LoadedDeck {
 				return
 			}
 			inflight = true
-			loadDeck(deckId)
+			fetchDeck(deckId)
 				.then((deck) => {
 					if (!alive) return
 					lastUpdatedAt.current = deck.updatedAt ?? Date.now()

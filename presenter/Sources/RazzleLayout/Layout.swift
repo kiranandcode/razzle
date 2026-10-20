@@ -119,6 +119,29 @@ public struct Options: Equatable {
     }
 }
 
+/// Servers a `razzle-presenter://` link may point the app at. A web page can open such a link,
+/// so the app only goes full screen (with the speaker view's mic) for Razzle's own servers.
+public let allowedServerHosts: Set<String> = ["localhost", "127.0.0.1", "razzle.kirancodes.me"]
+
+extension Options {
+    /// Options from `razzle-presenter://present?server=<url>&deck=<id>&slide=<n>`, or nil when the
+    /// link is not one, or names a server outside `allowedServerHosts`.
+    public static func fromLink(_ link: URL) -> Options? {
+        guard link.scheme == "razzle-presenter", link.host == "present",
+              let items = URLComponents(url: link, resolvingAgainstBaseURL: false)?.queryItems,
+              let server = items.first(where: { $0.name == "server" })?.value,
+              let su = URL(string: server), let host = su.host, allowedServerHosts.contains(host),
+              su.scheme == "https" || (su.scheme == "http" && host != "razzle.kirancodes.me")
+        else { return nil }
+        var o = Options()
+        o.url = server
+        while o.url.hasSuffix("/") { o.url.removeLast() }
+        o.deck = items.first(where: { $0.name == "deck" })?.value
+        o.slide = items.first(where: { $0.name == "slide" })?.value.flatMap(Int.init)
+        return o
+    }
+}
+
 public enum OptionError: Error, CustomStringConvertible {
     case missingValue(String), badValue(String, String), unknown(String)
     public var description: String {

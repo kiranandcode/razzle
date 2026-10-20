@@ -21,12 +21,15 @@ import {
 	useToasts,
 	useValue,
 } from 'tldraw'
+import { micStart, useAutoMic, useBrowserMic } from '../asr/mic'
+import { MicToggle } from '../asr/MicToggle'
 import { PUBLIC } from '../model/base'
 import { setMode, useRazzle } from '../model/client'
 import { generateNotes } from '../model/deck'
 import { SaveStatus } from '../model/persist'
 import { useStudio } from './context'
 import { presentHere, presentWithApp } from './presenting'
+import { shareDeck } from './sharing'
 import { $inspector, InspectorTab } from './state'
 
 export function RazzleMenuPanel() {
@@ -116,9 +119,18 @@ export function RazzleSharePanel() {
 			{!PUBLIC && (
 				<>
 					<span className="rz-divider" />
+					<MicToggle variant="studio" />
 					<RecordButton />
 					<NotesButton />
+					<ShareButton />
 					<PresentButton />
+				</>
+			)}
+			{PUBLIC && (
+				<>
+					<span className="rz-divider" />
+					<ShareButton />
+					<PresentHereButton />
 				</>
 			)}
 		</div>
@@ -157,6 +169,9 @@ function RecordButton() {
 	const connected = useRazzle((s) => s.connected)
 	const mode = useRazzle((s) => s.state.mode)
 	const recording = mode === 'record'
+	// browser mic (RAZZLE_AUDIO=browser): Record takes the mic, and lets it go when recording stops
+	const browserMic = useBrowserMic()
+	useAutoMic(recording, { claim: false })
 	return recording ? (
 		<TldrawUiButton type="normal" className="rz-top-btn rz-recording" title="Stop recording" onClick={() => setMode('idle')}>
 			<span className="rz-rec-dot" />
@@ -168,7 +183,10 @@ function RecordButton() {
 			className="rz-top-btn rz-record-btn"
 			disabled={!connected || mode === 'present'}
 			title={connected ? 'Rehearse: every sentence is stored against its slide and step' : 'Needs the Razzle server'}
-			onClick={() => setMode('record', false, deck.id)}
+			onClick={() => {
+				setMode('record', false, deck.id)
+				if (browserMic) void micStart('auto')
+			}}
 		>
 			<TldrawUiButtonIcon icon="rz-record" small />
 			<TldrawUiButtonLabel>Record</TldrawUiButtonLabel>
@@ -249,6 +267,52 @@ function PresentButton() {
 					</TldrawUiMenuContextProvider>
 				</TldrawUiDropdownMenuContent>
 			</TldrawUiDropdownMenuRoot>
+		</div>
+	)
+}
+
+/** A link that carries the deck (src/model/share.ts), copied to the clipboard. */
+function ShareButton() {
+	const editor = useEditor()
+	const { deck, sync } = useStudio()
+	const toasts = useToasts()
+	const [busy, setBusy] = useState(false)
+	return (
+		<TldrawUiButton
+			type="normal"
+			className="rz-top-btn"
+			disabled={busy}
+			title="Copy a link that carries the whole deck: anyone with it can view the talk"
+			onClick={async () => {
+				setBusy(true)
+				await shareDeck(editor, deck, sync?.$title.get() ?? deck.title, sync?.flush, (t) => toasts.addToast(t))
+				setBusy(false)
+			}}
+		>
+			<TldrawUiButtonIcon icon="link" small />
+			<TldrawUiButtonLabel>Share</TldrawUiButtonLabel>
+		</TldrawUiButton>
+	)
+}
+
+/** The public studio presents in this browser only (no server, no presenter app). */
+function PresentHereButton() {
+	const editor = useEditor()
+	const { deck, sync } = useStudio()
+	return (
+		<div className="rz-split">
+			<TldrawUiButton
+				type="primary"
+				className="rz-top-btn"
+				title="Present from this slide: the slides in this tab, the speaker view in a new window"
+				onClick={async () => {
+					await sync?.flush()
+					presentHere(editor, deck.id)
+				}}
+			>
+				<TldrawUiButtonIcon icon="rz-play" small />
+				<TldrawUiButtonLabel>Present</TldrawUiButtonLabel>
+			</TldrawUiButton>
 		</div>
 	)
 }

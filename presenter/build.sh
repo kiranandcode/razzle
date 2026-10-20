@@ -27,6 +27,14 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><false/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSMicrophoneUsageDescription</key><string>The speaker view listens to your talk to move the slides along.</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>me.kirancodes.razzle.presenter</string>
+      <key>CFBundleURLSchemes</key><array><string>razzle-presenter</string></array>
+    </dict>
+  </array>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSAppTransportSecurity</key>
   <dict>
@@ -37,4 +45,6 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 PLIST
 
 codesign -s - --force --deep "$APP"
+# register the razzle-presenter:// link scheme with Launch Services
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP"
 echo "built $(pwd)/$APP"

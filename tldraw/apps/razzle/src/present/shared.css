@@ -1,0 +1,26 @@
+/* A shared talk (SharedView.tsx): the audience view plus one quiet button. */
+.rz-open-in {
+	position: absolute;
+	right: 16px;
+	bottom: 16px;
+	z-index: 10;
+	height: 30px;
+	padding: 0 12px;
+	border: 1px solid rgba(255, 255, 255, 0.18);
+	border-radius: 6px;
+	background: rgba(18, 19, 21, 0.72);
+	color: #e9e6df;
+	font: 12px 'Inter', sans-serif;
+	cursor: pointer;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.25s;
+}
+.rz-open-in[data-awake='true'] {
+	opacity: 1;
+	pointer-events: auto;
+}
+.rz-open-in:hover {
+	background: rgba(18, 19, 21, 0.92);
+	border-color: rgba(255, 255, 255, 0.35);
+}

@@ -28,6 +28,10 @@ final class WebPane: NSObject, WKNavigationDelegate, WKUIDelegate {
     let webView: WKWebView
     private var probeTimer: Timer?
     private var waiting = false
+    private var onLoginPage = false
+    /// Called when this pane leaves the server's sign-in page for the app (the session cookie is
+    /// shared by all panes, so the others can reload past their own sign-in page).
+    var onSignedIn: (() -> Void)?
 
     init(role: Role, target: URL, probeURL: URL) {
         self.role = role
@@ -104,6 +108,12 @@ final class WebPane: NSObject, WKNavigationDelegate, WKUIDelegate {
         showWaiting()
     }
 
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        let login = webView.url?.path.hasSuffix("/login") ?? false
+        if onLoginPage && !login { onSignedIn?() }
+        onLoginPage = login
+    }
+
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         failed(error)
     }
@@ -115,6 +125,16 @@ final class WebPane: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         if waiting { return }
         start()
+    }
+
+    // The speaker view may capture the microphone for in-browser transcription (hosted Razzle);
+    // only from the Razzle server it was pointed at, and never in the audience view.
+    @available(macOS 12.0, *)
+    func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                 initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
+                 decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        let sameServer = origin.host == target.host && origin.protocol == target.scheme
+        decisionHandler(role == .speaker && type == .microphone && sameServer ? .grant : .deny)
     }
 
     // window.open / target=_blank: open in the default browser rather than nowhere.
@@ -130,8 +150,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panes: [Role: WebPane] = [:]
     private var windows: [Role: PresenterWindow] = [:]
     private var keyMonitor: Any?
+    /// Started without arguments (from Finder or a razzle-presenter:// link): wait briefly for a link.
+    private let awaitLink: Bool
+    private var linkApplied = false
 
-    init(options: Options) { self.options = options }
+    init(options: Options, awaitLink: Bool) {
+        self.options = options
+        self.awaitLink = awaitLink
+    }
+
+    /// razzle-presenter://present?server=<url>&deck=<id>&slide=<n> (opened by the hosted studio)
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard var o = urls.lazy.compactMap(Options.fromLink).first else {
+            NSLog("razzle-presenter: ignored link(s) \(urls)")
+            return
+        }
+        o.single = options.single
+        o.swap = options.swap
+        options = o
+        linkApplied = true
+        for w in windows.values { w.orderOut(nil); w.close() }
+        windows = [:]
+        panes = [:]
+        layoutWindows()
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
@@ -157,7 +200,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(screensChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
 
-        layoutWindows()
+        if awaitLink {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                guard let self, !self.linkApplied else { return }
+                self.layoutWindows()
+            }
+        } else {
+            layoutWindows()
+        }
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -240,6 +290,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         w.contentView!.addSubview(pane.webView)
         windows[role] = w
         panes[role] = pane
+        pane.onSignedIn = { [weak self, weak pane] in
+            self?.panes.values.filter { $0 !== pane }.forEach { $0.reload() }
+        }
         pane.start()
     }
 

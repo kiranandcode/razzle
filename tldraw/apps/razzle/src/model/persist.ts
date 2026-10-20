@@ -12,54 +12,18 @@
 //   new on either side                → kept
 //   deleted on one side, untouched on the other → deleted
 import { Editor, TLRecord, TLStoreSnapshot, atom } from 'tldraw'
+import { PUBLIC } from './base'
 import { on } from './client'
 import { StaleDeckError, loadDeck, saveDeck } from './deck'
+import { LOCAL_PREFIX, readLocalDeck, writeLocalDeck } from './localStore'
 import { buildSlideIndex } from './slides'
 import { DECK_FORMAT, Deck, SLIDE_H, SLIDE_W } from './types'
+
+export { listLocalDecks, readLocalDeck } from './localStore'
 
 export type SaveStatus = 'saved' | 'saving' | 'edited' | 'local' | 'error'
 
 const AUTOSAVE_MS = 800
-const LOCAL_PREFIX = 'razzle:deck:'
-
-interface LocalCopy {
-	deck: Deck
-	/** The server version these edits build on (undefined: never seen on the server). */
-	base?: number
-	/** True when the copy holds edits the server does not have. */
-	unsynced: boolean
-	savedAt: number
-}
-
-export function readLocalDeck(id: string): LocalCopy | null {
-	try {
-		const raw = localStorage.getItem(LOCAL_PREFIX + id)
-		return raw ? (JSON.parse(raw) as LocalCopy) : null
-	} catch {
-		return null
-	}
-}
-
-function writeLocalDeck(copy: LocalCopy) {
-	try {
-		localStorage.setItem(LOCAL_PREFIX + copy.deck.id, JSON.stringify(copy))
-		return true
-	} catch {
-		return false
-	}
-}
-
-/** Decks kept in this browser (for the picker when the server is away). */
-export function listLocalDecks(): { id: string; title: string; updatedAt: number; slideCount: number }[] {
-	const out = []
-	for (let i = 0; i < localStorage.length; i++) {
-		const k = localStorage.key(i)
-		if (!k?.startsWith(LOCAL_PREFIX)) continue
-		const c = readLocalDeck(k.slice(LOCAL_PREFIX.length))
-		if (c) out.push({ id: c.deck.id, title: c.deck.title, updatedAt: c.savedAt, slideCount: c.deck.slides?.length ?? 0 })
-	}
-	return out.sort((a, b) => b.updatedAt - a.updatedAt)
-}
 
 export type OpenedDeck =
 	| { kind: 'server'; deck: Deck; localEdits?: Deck }
@@ -278,8 +242,10 @@ export function startDeckSync(
 		if (msg.deckId === id) void onRemote(msg.updatedAt)
 	})
 
-	// After an offline spell, push browser-kept edits once the server answers again.
+	// After an offline spell, push browser-kept edits once the server answers again
+	// (the public build has no server: its `state` comes from the in-browser presenter).
 	const offState = on('state', () => {
+		if (PUBLIC) return
 		if ($status.get() === 'local' && !saving) {
 			dirty = true
 			schedule(200)

@@ -1,6 +1,5 @@
 // tldraw UI customisation for the studio: the toolbar (with the Slide tool and the library),
 // a main menu trimmed to what applies to a deck, keyboard shortcuts, and translations.
-import { PUBLIC } from '../model/base'
 import {
 	ArrowToolbarItem,
 	AssetToolbarItem,
@@ -61,6 +60,7 @@ export const studioHooks: {
 	exportReveal?: () => void
 	exportPdf?: () => void
 	presentHere?: () => void
+	share?: () => void
 } = {}
 
 const LABELS: Record<string, string> = {
@@ -71,6 +71,7 @@ const LABELS: Record<string, string> = {
 	'action.razzle.export-reveal': 'reveal.js (.html)',
 	'action.razzle.export-pdf': 'PDF (print)',
 	'action.razzle.present-here': 'Present in this browser',
+	'action.razzle.share': 'Copy a link to this talk',
 	'menu.razzle.export': 'Export deck',
 }
 
@@ -104,7 +105,8 @@ export const studioOverrides: TLUiOverrides[] = [
 			add('export-pptx', undefined, () => studioHooks.exportPptx?.())
 			add('export-reveal', undefined, () => studioHooks.exportReveal?.())
 			add('export-pdf', undefined, () => studioHooks.exportPdf?.())
-			if (!PUBLIC) add('present-here', undefined, () => studioHooks.presentHere?.(), 'rz-present')
+			add('present-here', undefined, () => studioHooks.presentHere?.(), 'rz-present')
+			add('share', undefined, () => studioHooks.share?.(), 'link')
 			return actions
 		},
 	},
@@ -166,7 +168,8 @@ function RazzleMainMenu() {
 					</TldrawUiMenuGroup>
 				</TldrawUiMenuSubmenu>
 				<TldrawUiMenuActionItem actionId="insert-media" />
-				{!PUBLIC && <TldrawUiMenuActionItem actionId="razzle.present-here" />}
+				<TldrawUiMenuActionItem actionId="razzle.present-here" />
+				<TldrawUiMenuActionItem actionId="razzle.share" />
 			</TldrawUiMenuGroup>
 			<TldrawUiMenuGroup id="preferences">
 				<TldrawUiMenuSubmenu id="preferences" label="menu.preferences">

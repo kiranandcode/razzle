@@ -16,6 +16,7 @@ import { StudioContext } from './context'
 import { LIBRARY_DRAG_TYPE, LibraryPanel, libraryItem } from './LibraryPanel'
 import { insertLibraryItem } from './library'
 import { presentHere, presentWithApp } from './presenting'
+import { shareDeck } from './sharing'
 import { addSlide, currentSlide, zoomToSlide } from './slideOps'
 import { SlidesPanel } from './SlidesPanel'
 import { SpeechPanel } from './SpeechPanel'
@@ -112,7 +113,10 @@ function StudioEditor({ opened, onOpenDecks }: { opened: Exclude<Opened, { kind:
 			}
 			editor.clearHistory()
 			const undoDefaults = applyRazzleDefaults(editor)
-			const undoDblClick = PUBLIC ? () => {} : presentOnOutsideDoubleClick(editor, deck.id)
+			// the public build has no presenter app: it presents in this browser, from the edits just saved there
+			const undoDblClick = presentOnOutsideDoubleClick(editor, (from) =>
+				PUBLIC ? s.flush().then(() => presentHere(editor, deck.id, from)) : presentWithApp(editor, deck.id, from)
+			)
 			const first = getSlides(editor)[0]
 			if (first) zoomToSlide(editor, first, false)
 			connect('editor', deck.id)
@@ -143,6 +147,7 @@ function StudioEditor({ opened, onOpenDecks }: { opened: Exclude<Opened, { kind:
 			await sync?.flush()
 			presentHere(editor, deck.id)
 		}
+		studioHooks.share = () => void shareDeck(editor, deck, current().title, sync?.flush, (t) => toast?.(t))
 	}, [editor, sync, deck, onOpenDecks])
 
 	// PageUp / PageDown move between slides (arrows keep nudging shapes).
@@ -262,12 +267,15 @@ function Panels({ left, drawer, right }: { left?: HTMLElement | null; drawer?: H
 }
 
 let notify: ((title: string, description?: string) => void) | null = null
+let toast: ReturnType<typeof useToasts>['addToast'] | null = null
 function Notifier() {
 	const toasts = useToasts()
 	useEffect(() => {
 		notify = (title, description) => toasts.addToast({ title, description, severity: 'error' })
+		toast = toasts.addToast
 		return () => {
 			notify = null
+			toast = null
 		}
 	}, [toasts])
 	return null
@@ -277,7 +285,7 @@ function Notifier() {
  * Double-click on empty canvas outside every slide presents from the slide nearest the middle
  * of the view (the Cove: double-click the board critter). Inside slides tldraw behaves as usual.
  */
-function presentOnOutsideDoubleClick(editor: Editor, deckId: string) {
+function presentOnOutsideDoubleClick(editor: Editor, present: (from: 'nearest') => Promise<void>) {
 	type Idle = { handleDoubleClickOnCanvas(info: unknown): void }
 	const idle = editor.getStateDescendant('select.idle') as unknown as Idle | undefined
 	if (!idle) return () => {}
@@ -286,7 +294,7 @@ function presentOnOutsideDoubleClick(editor: Editor, deckId: string) {
 		const p = editor.inputs.getCurrentPagePoint()
 		const inSlide = getSlides(editor).some((s) => editor.getShapePageBounds(s.id as TLShapeId)?.containsPoint(p))
 		if (inSlide || !getSlides(editor).length) return original.call(this, info)
-		presentWithApp(editor, deckId, 'nearest').catch((e) => notify?.('Could not present', e instanceof Error ? e.message : String(e)))
+		present('nearest').catch((e) => notify?.('Could not present', e instanceof Error ? e.message : String(e)))
 	}
 	return () => {
 		idle.handleDoubleClickOnCanvas = original

@@ -22,7 +22,12 @@ export interface PresState {
   screens: { audience: number, speaker: number }
   /** Audience screen blacked out (`b` in either view). */
   black: boolean
+  /** Where speech comes from (RAZZLE_AUDIO) and whether it is being captured now: the server's
+   *  ffmpeg capture (local) or a browser client holding the mic (browser). */
+  mic: { source: MicSource, active: boolean }
 }
+
+export type MicSource = 'local' | 'browser'
 
 export interface NavRequest { action: NavAction, slide?: number, step?: number, source: NavSource }
 
@@ -47,6 +52,7 @@ export function initialState(): PresState {
     deckId: null, slideIndex: 0, step: 0, stepCount: 1, mode: 'idle', auto: true,
     agent: 'offline', takeId: null, lastNav: null,
     agentMessage: '', screens: { audience: 0, speaker: 0 }, black: false,
+    mic: { source: 'local', active: false },
   }
 }
 

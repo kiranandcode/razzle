@@ -1,0 +1,97 @@
+/* The browser mic switch (MicToggle.tsx). */
+.rz-mic {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+.rz-mic-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 26px;
+	padding: 0 10px 0 8px;
+	border-radius: 13px;
+	border: 1px solid currentColor;
+	background: none;
+	color: inherit;
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+.rz-mic-icon {
+	width: 14px;
+	height: 14px;
+	flex: 0 0 auto;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.4;
+	stroke-linecap: round;
+}
+.rz-mic-meter {
+	position: relative;
+	width: 28px;
+	height: 4px;
+	border-radius: 2px;
+	overflow: hidden;
+	background: color-mix(in srgb, currentColor 18%, transparent);
+}
+.rz-mic-meter > span {
+	position: absolute;
+	inset: 0;
+	background: currentColor;
+	transform-origin: left center;
+	transition: transform 0.08s linear;
+}
+.rz-mic-msg {
+	font-size: 12px;
+	opacity: 0.8;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 280px;
+}
+.rz-mic[data-status='error'] .rz-mic-msg {
+	opacity: 1;
+}
+
+/* speaker view (dark) */
+.rz-mic-speaker .rz-mic-btn {
+	color: var(--rz-dim, #8b8e94);
+	border-color: var(--rz-line, #26282c);
+}
+.rz-mic-speaker[data-status='listening'] .rz-mic-btn {
+	color: #9fd5c8;
+	border-color: #2f5a52;
+}
+.rz-mic-speaker[data-status='loading'] .rz-mic-btn {
+	color: #d8c48a;
+}
+.rz-mic-speaker[data-status='error'] .rz-mic-btn,
+.rz-mic-speaker[data-status='error'] .rz-mic-msg {
+	color: #e0896a;
+}
+.rz-mic-speaker .rz-mic-msg {
+	color: var(--rz-dim, #8b8e94);
+}
+
+/* studio top bar (tldraw's colours) */
+.rz-mic-studio {
+	margin: 0 4px;
+}
+.rz-mic-studio .rz-mic-btn {
+	height: 28px;
+	color: var(--tl-color-text-1);
+	border-color: var(--tl-color-divider);
+}
+.rz-mic-studio .rz-mic-btn:hover {
+	background: var(--tl-color-muted-2);
+}
+.rz-mic-studio[data-status='listening'] .rz-mic-btn {
+	color: #2b8a3e;
+}
+.rz-mic-studio[data-status='error'] .rz-mic-btn,
+.rz-mic-studio[data-status='error'] .rz-mic-msg {
+	color: #c92a2a;
+}

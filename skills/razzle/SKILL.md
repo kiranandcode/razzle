@@ -76,4 +76,6 @@ keys. A human press within 1.2 s of an agent advance counts as the same advance.
 
 `ANTHROPIC_API_KEY` (notes, judgements, hidden slides). `TYPESAFE_API_KEY` enables Jev
 for the fast live judgements; without it Claude Haiku is used. `RAZZLE_MIC` selects the
-avfoundation audio device (default 0).
+avfoundation audio device (default 0). With `RAZZLE_AUDIO=browser` the server has no mic: the
+studio page that holds the mic (speaker view while presenting, studio while recording)
+transcribes in the browser and sends the transcript.

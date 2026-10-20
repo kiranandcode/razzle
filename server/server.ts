@@ -7,7 +7,9 @@
 // Env: RAZZLE_PORT (7878), RAZZLE_DECKS_DIR (<repo>/decks), RAZZLE_STATIC (the static site,
 // default tldraw/apps/razzle/dist, the studio build), RAZZLE_AUDIO_FILE (stream a
 // wav instead of the mic), RAZZLE_MIC (avfoundation audio device, 0), RAZZLE_NO_LAUNCH=1
-// (/api/present does not open windows), RAZZLE_QUIET=1.
+// (/api/present does not open windows), RAZZLE_QUIET=1, RAZZLE_AUDIO (local: this machine's mic
+// through ffmpeg + whisper-server, the default; browser: a studio page transcribes and sends
+// `asr` messages), RAZZLE_MODELS_DIR (<repo>/models, served at /models/ for the browser ASR).
 
 import http from 'node:http'
 import fs from 'node:fs'
@@ -16,7 +18,9 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { WebSocketServer, WebSocket } from 'ws'
-import { AudioPipeline } from './audio.ts'
+import { AudioPipeline, cleanText } from './audio.ts'
+import { BrowserMic, type AsrEvent } from './mic.ts'
+import { createAuth } from './auth.ts'
 import { CueTracker, type Cue } from './cues.ts'
 import {
   applyNav, initialState, newClock, stepCountOf,
@@ -33,6 +37,8 @@ const PORT = Number(process.env.RAZZLE_PORT ?? 7878)
 const DECKS = path.resolve(process.env.RAZZLE_DECKS_DIR ?? (fs.existsSync(path.join(ROOT, 'private', 'decks')) ? path.join(ROOT, 'private', 'decks') : path.join(ROOT, 'decks')))
 const DIST = path.resolve(process.env.RAZZLE_STATIC ?? path.join(ROOT, 'tldraw', 'apps', 'razzle', 'dist'))
 const SHARED = path.join(ROOT, 'shared')
+const MODELS_DIR = path.resolve(process.env.RAZZLE_MODELS_DIR ?? path.join(ROOT, 'models'))
+const AUDIO_SOURCE: 'local' | 'browser' = process.env.RAZZLE_AUDIO === 'browser' ? 'browser' : 'local'
 const PRESENTER_APP = path.join(ROOT, 'presenter', 'build', 'Razzle Presenter.app')
 const QUIET = process.env.RAZZLE_QUIET === '1'
 
@@ -96,10 +102,11 @@ function withDeckLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
 
 // ---------------------------------------------------------------- live state
 
-let state: PresState = initialState()
+let state: PresState = { ...initialState(), mic: { source: AUDIO_SOURCE, active: false } }
 const clock = newClock()
 let cues = new CueTracker()
 let deck: Deck | null = null // the deck being presented/recorded (state.deckId)
+// local: capture + whisper on this machine; browser: `asr` messages from the client holding the mic
 const audio = new AudioPipeline()
 let audioStartedAt: number | null = null
 const openTakes = new Map<string, Take>()
@@ -107,6 +114,7 @@ const segInfo = new Map<number, { slideId: string, slideIndex: number, step: num
 
 interface Client { ws: WebSocket, role: string, deckId?: string }
 const clients = new Set<Client>()
+const mic = new BrowserMic<Client>()
 
 function send(c: Client, msg: unknown) {
   if (c.ws.readyState === WebSocket.OPEN) c.ws.send(JSON.stringify(msg))
@@ -173,8 +181,22 @@ async function setMode(mode: Mode, opts: { auto?: boolean, deckId?: string } = {
   }
   if (mode !== 'record') state = { ...state, takeId: null }
   broadcastState()
+  if (AUDIO_SOURCE !== 'local') return
   if (mode === 'idle') { if (audio.running) audio.stop() }
   else if (!audio.running) audio.start().catch(e => log('audio start failed:', e.message))
+}
+
+/** Resolves once no segment begun during `takeId` is waiting for its final (browser mode:
+ *  the mic holder closes its open segment when recording stops), or after `ms`. */
+function segmentsDone(takeId: string, ms = 10000): Promise<void> {
+  const t = Date.now()
+  return new Promise(res => {
+    const tick = () => {
+      if (![...segInfo.values()].some(s => s.takeId === takeId) || Date.now() - t > ms) res()
+      else setTimeout(tick, 100)
+    }
+    tick()
+  })
 }
 
 function closeTake() {
@@ -182,8 +204,9 @@ function closeTake() {
   const take = id ? openTakes.get(id) : null
   if (!take) return
   // finals still in flight belong to this take; save once they land
-  audio.stop()
-  audio.drain().then(async () => {
+  let drained: Promise<void>
+  if (AUDIO_SOURCE === 'local') { audio.stop(); drained = audio.drain() } else drained = segmentsDone(take.id)
+  drained.then(async () => {
     take.endedAt = Date.now()
     await writeAtomic(path.join(takeDir(take.deckId), `${take.id}.json`), take)
     openTakes.delete(take.id)
@@ -209,43 +232,97 @@ function onTranscript(segId: number, text: string, isFinal: boolean) {
   if (nav({ action: 'next', source: 'cue' }).accepted) broadcast({ t: 'cue-fired', id: cue.id, phrase: cue.phrase })
 }
 
+/** Every speech event, from either audio source (mic.ts lists them), comes through here. */
+function ingest(ev: AsrEvent) {
+  const { segId } = ev
+  switch (ev.kind) {
+    case 'segment-start': {
+      const s = slides()[state.slideIndex]
+      segInfo.set(segId, { slideId: s?.id ?? '', slideIndex: state.slideIndex, step: state.step, takeId: state.takeId })
+      break
+    }
+    case 'partial':
+      broadcast({ t: 'transcript', partial: ev.text })
+      onTranscript(segId, ev.text, false)
+      break
+    case 'late-partial':
+      onTranscript(segId, ev.text, false)
+      break
+    case 'pause': {
+      // the speaker paused: the closed segment's fast text, tagged with where it began
+      const info = segInfo.get(segId)
+      broadcast({ t: 'transcript', segId, pause: { text: ev.text, slideIndex: info?.slideIndex ?? state.slideIndex, step: info?.step ?? state.step } })
+      break
+    }
+    case 'final': {
+      const { text, t0, t1 } = ev
+      const info = segInfo.get(segId)
+      segInfo.delete(segId)
+      if (!text) { onTranscript(segId, '', true); return }
+      const s = slides()[state.slideIndex]
+      const u: Utterance = {
+        text, t0, t1,
+        slideId: info?.slideId ?? s?.id ?? '', slideIndex: info?.slideIndex ?? state.slideIndex, step: info?.step ?? state.step,
+      }
+      log(`final [${u.slideIndex}.${u.step}] ${text}`)
+      broadcast({ t: 'transcript', segId, final: u })
+      onTranscript(segId, text, true)
+      const take = info?.takeId ? openTakes.get(info.takeId) : null
+      if (take) {
+        take.utterances.push(u)
+        writeAtomic(path.join(takeDir(take.deckId), `${take.id}.json`), take).catch(e => log('take write failed:', e.message))
+      }
+      break
+    }
+  }
+}
+
 audio.on('log', (s: string) => log(s))
 audio.on('error', (e: Error) => log('audio error:', e.message))
-audio.on('started', ({ at }: { at: number }) => { audioStartedAt = at })
-audio.on('segment-start', ({ segId }: { segId: number }) => {
-  const s = slides()[state.slideIndex]
-  segInfo.set(segId, { slideId: s?.id ?? '', slideIndex: state.slideIndex, step: state.step, takeId: state.takeId })
-})
-audio.on('partial', ({ segId, text }: { segId: number, text: string }) => {
-  broadcast({ t: 'transcript', partial: text })
-  onTranscript(segId, text, false)
-})
-audio.on('late-partial', ({ segId, text }: { segId: number, text: string }) => {
-  onTranscript(segId, text, false)
-})
-// the speaker paused: the closed segment's fast text, tagged with where it began
-audio.on('pause', ({ segId, text }: { segId: number, text: string }) => {
-  const info = segInfo.get(segId)
-  broadcast({ t: 'transcript', segId, pause: { text, slideIndex: info?.slideIndex ?? state.slideIndex, step: info?.step ?? state.step } })
-})
-audio.on('final', ({ segId, text, t0, t1 }: { segId: number, text: string, t0: number, t1: number }) => {
-  const info = segInfo.get(segId)
-  segInfo.delete(segId)
-  if (!text) { onTranscript(segId, '', true); return }
-  const s = slides()[state.slideIndex]
-  const u: Utterance = {
-    text, t0, t1,
-    slideId: info?.slideId ?? s?.id ?? '', slideIndex: info?.slideIndex ?? state.slideIndex, step: info?.step ?? state.step,
+audio.on('started', ({ at }: { at: number }) => { audioStartedAt = at; setMicActive(true) })
+audio.on('stopped', () => setMicActive(false))
+audio.on('source-ended', () => setMicActive(false))
+audio.on('segment-start', ({ segId, t0 }: { segId: number, t0: number }) => ingest({ kind: 'segment-start', segId, t0 }))
+for (const kind of ['partial', 'late-partial', 'pause'] as const) {
+  audio.on(kind, ({ segId, text }: { segId: number, text: string }) => ingest({ kind, segId, text }))
+}
+audio.on('final', ({ segId, text, t0, t1 }: { segId: number, text: string, t0: number, t1: number }) => ingest({ kind: 'final', segId, text, t0, t1 }))
+
+function setMicActive(active: boolean) {
+  if (state.mic.active === active) return
+  state = { ...state, mic: { ...state.mic, active } }
+  broadcastState()
+}
+
+// browser mode: the client holding the mic sends {t:'asr'}; the latest {t:'mic', on:true} wins
+function micClaim(c: Client, on: boolean) {
+  if (AUDIO_SOURCE !== 'browser') { send(c, { t: 'error', message: 'mic: this server captures audio itself (RAZZLE_AUDIO=local)' }); return }
+  if (on) {
+    if (c.role === 'audience') { send(c, { t: 'mic', held: false, message: 'the audience view does not capture' }); return }
+    const { previous, ended } = mic.claim(c)
+    ended.forEach(ingest)
+    if (previous) send(previous, { t: 'mic', held: false, message: 'another screen took the mic' })
+    send(c, { t: 'mic', held: true })
+    log(`mic: claimed by ${c.role} (claim ${mic.claims})`)
+  } else {
+    const { released, ended } = mic.release(c)
+    ended.forEach(ingest)
+    if (released) log(`mic: released by ${c.role}`)
+    send(c, { t: 'mic', held: false })
   }
-  log(`final [${u.slideIndex}.${u.step}] ${text}`)
-  broadcast({ t: 'transcript', segId, final: u })
-  onTranscript(segId, text, true)
-  const take = info?.takeId ? openTakes.get(info.takeId) : null
-  if (take) {
-    take.utterances.push(u)
-    writeAtomic(path.join(takeDir(take.deckId), `${take.id}.json`), take).catch(e => log('take write failed:', e.message))
+  setMicActive(mic.active)
+}
+
+function micAsr(c: Client, msg: any) {
+  if (AUDIO_SOURCE !== 'browser') return
+  const ev = mic.translate(c, msg, state.mode !== 'idle' && !!deck)
+  if (!ev) return
+  if (ev.kind !== 'segment-start') {
+    ev.text = cleanText(ev.text)
+    if ((ev.kind === 'partial' || ev.kind === 'late-partial') && !ev.text) return
   }
-})
+  ingest(ev)
+}
 
 // ---------------------------------------------------------------- hidden slides
 
@@ -415,6 +492,7 @@ const MIME: Record<string, string> = {
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.gif': 'image/gif', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2',
   '.ttf': 'font/ttf', '.otf': 'font/otf', '.mp3': 'audio/mpeg', '.mp4': 'video/mp4', '.wasm': 'application/wasm', '.txt': 'text/plain',
+  '.onnx': 'application/octet-stream',
 }
 
 function json(res: http.ServerResponse, code: number, body: unknown) {
@@ -438,6 +516,26 @@ async function serveShared(res: http.ServerResponse, rel: string) {
     res.writeHead(200, { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store' })
     res.end(data)
   } catch { res.writeHead(404); res.end() }
+}
+
+// Speech-model files for the browser ASR (RAZZLE_MODELS_DIR; filled by server/fetch-models.sh).
+// A missing file is a plain 404, so the studio falls back to the Hugging Face hub.
+const missingModels = new Set<string>()
+async function serveModel(req: http.IncomingMessage, res: http.ServerResponse, rel: string) {
+  const file = path.join(MODELS_DIR, path.normalize(rel).replace(/^(\.\.[/\\])+/, ''))
+  if (!file.startsWith(MODELS_DIR + path.sep)) { res.writeHead(403); res.end(); return }
+  const st = await fsp.stat(file).catch(() => null)
+  if (!st?.isFile()) {
+    if (!missingModels.has(rel)) { missingModels.add(rel); log(`models: ${rel} is not in ${MODELS_DIR} (the studio falls back to the hub; server/fetch-models.sh)`) }
+    res.writeHead(404, { 'cache-control': 'no-store' }); res.end(); return
+  }
+  const type = MIME[path.extname(file)] ?? 'application/octet-stream'
+  // no-store: the studio keeps the files in its own Cache Storage. (A cacheable response here lets
+  // transformers.js's size probe, a GET it never reads, hold Chrome's cache lock on the file and
+  // stall the real download for ~20 s.)
+  res.writeHead(200, { 'content-type': type, 'content-length': st.size, 'cache-control': 'no-store', 'last-modified': st.mtime.toUTCString() })
+  if (req.method === 'HEAD') { res.end(); return }
+  fs.createReadStream(file).on('error', () => res.destroy()).pipe(res)
 }
 
 async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse) {
@@ -542,15 +640,27 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   }
   if (p === '/api/debug' && m === 'GET') {
     const at = url.searchParams.get('arrival')
-    return json(res, 200, { arrival: at ? audio.arrivalOf(Number(at)) : undefined, audioStartedAt, audioRunning: audio.running, clients: [...clients].map(c => c.role), whisper: { fast: audio.fast.port, final: audio.final.port } })
+    return json(res, 200, { arrival: at ? audio.arrivalOf(Number(at)) : undefined, audioStartedAt, audioRunning: audio.running, clients: [...clients].map(c => c.role), whisper: { fast: audio.fast.port, final: audio.final.port }, audioSource: AUDIO_SOURCE, mic: { active: mic.active, holder: mic.holder?.role ?? null, claims: mic.claims } })
   }
   json(res, 404, { error: `no route ${m} ${p}` })
 }
 
+// Sign-in, on a hosted server only (RAZZLE_HTPASSWD; auth.ts)
+const auth = process.env.RAZZLE_HTPASSWD
+  ? createAuth({
+    htpasswd: process.env.RAZZLE_HTPASSWD,
+    secretFile: process.env.RAZZLE_SESSION_KEY_FILE ?? path.join(DECKS, '..', 'session.key'),
+    cookiePath: process.env.RAZZLE_COOKIE_PATH ?? '/',
+    internalToken: process.env.RAZZLE_INTERNAL_TOKEN,
+  })
+  : null
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://x')
   try {
+    if (auth && !await auth.gate(req, res, url.pathname)) return
     if (url.pathname.startsWith('/api/')) await api(req, res, url)
+    else if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname.startsWith('/models/')) await serveModel(req, res, decodeURIComponent(url.pathname.slice('/models/'.length)))
     else if (req.method === 'GET' || req.method === 'HEAD') await serveStatic(req, res)
     else { res.writeHead(405); res.end() }
   } catch (e) {
@@ -563,6 +673,7 @@ const server = http.createServer(async (req, res) => {
 const wss = new WebSocketServer({ noServer: true })
 server.on('upgrade', (req, socket, head) => {
   if (new URL(req.url ?? '/', 'http://x').pathname !== '/ws') { socket.destroy(); return }
+  if (auth && !auth.allowUpgrade(req)) { socket.end('HTTP/1.1 401 Unauthorized\r\n\r\n'); return }
   wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req))
 })
 
@@ -632,6 +743,12 @@ wss.on('connection', (ws: WebSocket) => {
         case 'agent':
           setAgent(msg.status, msg.message, c)
           break
+        case 'mic':
+          micClaim(c, !!msg.on)
+          break
+        case 'asr':
+          micAsr(c, msg)
+          break
         case 'insert-hidden': {
           const r = await insertHidden(msg.after ?? state.slideIndex, msg.slide, String(msg.prompt ?? ''))
           if (!r.ok) { log('insert-hidden rejected:', r.error); send(c, { t: 'error', message: `insert-hidden: ${r.error}` }) }
@@ -645,6 +762,11 @@ wss.on('connection', (ws: WebSocket) => {
   ws.on('close', () => {
     clients.delete(c)
     countScreens()
+    if (mic.holder === c) {
+      mic.release(c).ended.forEach(ingest)
+      log(`mic: holder (${c.role}) disconnected`)
+      setMicActive(false)
+    }
     if (c.role === 'director' && ![...clients].some(x => x.role === 'director')) {
       log('director disconnected')
       setAgent('offline')
@@ -670,7 +792,7 @@ process.on('exit', () => audio.shutdown())
 process.on('uncaughtException', e => { console.error(e); shutdown(1) })
 
 server.listen(PORT, '127.0.0.1', () => {
-  log(`razzle server on http://localhost:${PORT} (decks: ${DECKS})`)
-  if (process.env.RAZZLE_WARM === '1') audio.warm().catch(e => log('warm failed:', e.message))
+  log(`razzle server on http://localhost:${PORT} (decks: ${DECKS}, audio: ${AUDIO_SOURCE})`)
+  if (process.env.RAZZLE_WARM === '1' && AUDIO_SOURCE === 'local') audio.warm().catch(e => log('warm failed:', e.message))
 })
 server.on('error', e => { console.error(`server: ${e.message}`); process.exit(1) })

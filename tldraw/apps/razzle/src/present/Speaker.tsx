@@ -2,6 +2,9 @@
 // for this step, notes, transcript, cues, timer, orb and the hidden slides.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor } from 'tldraw'
+import { useAutoMic } from '../asr/mic'
+import { MicToggle } from '../asr/MicToggle'
+import { PUBLIC } from '../model/base'
 import { nav, on, requestHidden, setBlack, setMode, useRazzle } from '../model/client'
 import { movePosition } from '../model/slides'
 import type { Deck } from '../model/types'
@@ -54,6 +57,8 @@ export function Speaker({
 	const [editor, setEditor] = useState<Editor | null>(null)
 	const [fit, setFit] = useState<FitRect | null>(null)
 	const [helpOpen, setHelpOpen] = useState(false)
+	// browser mic (RAZZLE_AUDIO=browser): the speaker view listens while a talk is presented
+	useAutoMic(state.mode === 'present', { claim: true })
 
 	const slide = slides[state.slideIndex] as SlideInfo | undefined
 	const stepCount = state.stepCount || slide?.stepCount || 1
@@ -132,11 +137,14 @@ export function Speaker({
 		escape: () => setHelpOpen(false),
 		extra: {
 			g: () => (newest >= 0 ? goto({ slide: newest, step: 0 }) : acknowledge('no hidden slides')),
-			h: () => {
-				requestHidden()
-				acknowledge('asked ✓')
-			},
-			a: toggleAuto,
+			// the public build has no agent: nothing to ask, nothing to auto-advance
+			...(!PUBLIC && {
+				h: () => {
+					requestHidden()
+					acknowledge('asked ✓')
+				},
+				a: toggleAuto,
+			}),
 			'?': () => setHelpOpen((o) => !o),
 			'/': () => setHelpOpen((o) => !o),
 		},
@@ -174,14 +182,17 @@ export function Speaker({
 						<i className="rz-dot" />
 						{MODE_LABEL[state.mode]}
 					</span>
-					<button className={`rz-auto${state.auto ? ' rz-on' : ''}`} onClick={toggleAuto} title="Let the agent advance (a)">
-						Auto {state.auto ? 'on' : 'off'}
-					</button>
+					{!PUBLIC && (
+						<button className={`rz-auto${state.auto ? ' rz-on' : ''}`} onClick={toggleAuto} title="Let the agent advance (a)">
+							Auto {state.auto ? 'on' : 'off'}
+						</button>
+					)}
 					{state.black && (
 						<span className="rz-tag rz-black-tag" title="b to restore">
 							Audience black
 						</span>
 					)}
+					<MicToggle variant="speaker" />
 					{!connected && <span className="rz-offline">reconnecting…</span>}
 				</div>
 
@@ -190,10 +201,12 @@ export function Speaker({
 						{elapsed}
 					</span>
 					<span className="rz-clock">{clock}</span>
-					<span className="rz-agent">
-						{state.agentMessage && <span className="rz-agent-msg">{state.agentMessage}</span>}
-						<Orb status={state.agent} message={state.agentMessage} />
-					</span>
+					{!PUBLIC && (
+						<span className="rz-agent">
+							{state.agentMessage && <span className="rz-agent-msg">{state.agentMessage}</span>}
+							<Orb status={state.agent} message={state.agentMessage} />
+						</span>
+					)}
 				</div>
 			</header>
 
@@ -234,7 +247,7 @@ export function Speaker({
 						</div>
 					</div>
 
-					{cues.length > 0 && (
+					{!PUBLIC && cues.length > 0 && (
 						<div className="rz-panel rz-cues">
 							<div className="rz-label">Cues</div>
 							<div className="rz-chips">
@@ -263,7 +276,7 @@ export function Speaker({
 					<div className="rz-panel rz-hidden">
 						<div className="rz-label">
 							Hidden slides
-							{ack ? <span className="rz-ack">{ack}</span> : <span className="rz-keys">g jump · h ask</span>}
+							{ack ? <span className="rz-ack">{ack}</span> : <span className="rz-keys">{PUBLIC ? 'g jump' : 'g jump · h ask'}</span>}
 						</div>
 						{deck && <HiddenStrip deck={deck} version={version} hidden={hidden} newest={newest} current={state.slideIndex} />}
 					</div>
@@ -272,13 +285,14 @@ export function Speaker({
 
 			<footer className="rz-ticker" aria-live="off">
 				<div className="rz-lines">
-					{recentFinals.map((u, k) => (
+					{PUBLIC && <span className="rz-idle">→ next · ← previous · b black screen · g hidden slide · ? keys</span>}
+					{!PUBLIC && recentFinals.map((u, k) => (
 						<span className="rz-final" key={`${u.t0}-${k}`}>
 							{u.text + ' '}
 						</span>
 					))}
-					{partial && <span className="rz-partial">{partial}</span>}
-					{!recentFinals.length && !partial && <span className="rz-idle">Transcript appears here while you speak.</span>}
+					{!PUBLIC && partial && <span className="rz-partial">{partial}</span>}
+					{!PUBLIC && !recentFinals.length && !partial && <span className="rz-idle">Transcript appears here while you speak.</span>}
 				</div>
 				<button className="rz-help-btn" onClick={() => setHelpOpen((o) => !o)} title="Keys (?)">
 					?
@@ -306,10 +320,14 @@ export function Speaker({
 							<dd>black audience screen</dd>
 							<dt>g</dt>
 							<dd>jump to the newest hidden slide</dd>
-							<dt>h</dt>
-							<dd>ask the agent for a hidden slide</dd>
-							<dt>a</dt>
-							<dd>auto-advance on / off</dd>
+							{!PUBLIC && (
+								<>
+									<dt>h</dt>
+									<dd>ask the agent for a hidden slide</dd>
+									<dt>a</dt>
+									<dd>auto-advance on / off</dd>
+								</>
+							)}
 							<dt>?</dt>
 							<dd>this help</dd>
 						</dl>

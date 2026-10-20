@@ -2,6 +2,7 @@
 // corner only when no speaker screen is connected; `black` blanks the screen.
 import { useEffect, useRef, useState } from 'react'
 import type { Editor } from 'tldraw'
+import { PUBLIC } from '../model/base'
 import { nav, setBlack, useRazzle } from '../model/client'
 import type { Deck } from '../model/types'
 import { Highlights } from './Highlight'
@@ -15,11 +16,14 @@ export function Audience({
 	version,
 	slides,
 	onLoaded,
+	bare,
 }: {
 	deck: Deck | null
 	version: number
 	slides: SlideInfo[]
 	onLoaded: (editor: Editor) => void
+	/** No orb (a shared talk has no agent). */
+	bare?: boolean
 }) {
 	const state = useRazzle((s) => s.state)
 	const [editor, setEditor] = useState<Editor | null>(null)
@@ -58,7 +62,7 @@ export function Audience({
 				</Stage>
 			)}
 			{state.black && <div className="rz-black" />}
-			{state.screens.speaker === 0 && (
+			{!PUBLIC && !bare && state.screens.speaker === 0 && (
 				<div className="rz-orb-corner">
 					<Orb status={state.agent} message={state.agentMessage} />
 				</div>

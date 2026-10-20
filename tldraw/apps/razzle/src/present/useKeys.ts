@@ -105,7 +105,12 @@ export function clickNav() {
 		},
 		onContextMenu: (e: React.MouseEvent) => {
 			e.preventDefault()
-			if (!ignore(e)) nav('prev')
+			// one right-click can raise two contextmenu events (press and release on some systems)
+			if (ignore(e) || e.timeStamp - lastContextMenu < 300) return
+			lastContextMenu = e.timeStamp
+			nav('prev')
 		},
 	}
 }
+
+let lastContextMenu = -Infinity

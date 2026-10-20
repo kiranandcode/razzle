@@ -4,6 +4,7 @@ import { Studio } from './editor/Studio'
 import { parseRoute } from './model/route'
 
 const PresentScreen = lazy(() => import('./present'))
+const SharedView = lazy(() => import('./present/SharedView'))
 
 function useRoute() {
 	const [route, setRoute] = useState(parseRoute)
@@ -21,6 +22,13 @@ const go = (deckId: string | null) => {
 
 export default function App() {
 	const route = useRoute()
+	if (route.view === 'shared') {
+		return (
+			<Suspense fallback={null}>
+				<SharedView />
+			</Suspense>
+		)
+	}
 	if (route.view !== 'editor') {
 		return (
 			<Suspense fallback={null}>

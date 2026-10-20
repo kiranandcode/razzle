@@ -8,12 +8,14 @@
   "scripts": {
     "start": "node server.ts",
     "director": "node director.ts",
-    "test": "node --test test/debounce.test.ts test/cues.test.ts test/v2.test.ts && node test/e2e.ts",
+    "test": "node --test test/debounce.test.ts test/cues.test.ts test/v2.test.ts test/mic.test.ts test/segmenter.test.ts && node test/e2e.ts",
     "test:director": "node test/director.ts",
+    "test:browser-asr": "node test/browser-asr.ts",
     "typecheck": "tsc -p ."
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
+    "bcryptjs": "^3.0.3",
     "ws": "^8.22.0"
   },
   "devDependencies": {
