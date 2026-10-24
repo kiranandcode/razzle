@@ -11,6 +11,11 @@ export type Role = 'editor' | 'audience' | 'speaker' | 'director' | 'cli'
 export type AgentStatus = 'offline' | 'listening' | 'thinking' | 'acting' | 'ready'
 export type NavSource = 'human' | 'agent' | 'cue'
 export type Mode = 'idle' | 'record' | 'present'
+export type Workflow = 'draft' | 'rehearse' | 'present'
+export interface PresentationOptions {
+	workflow?: Workflow
+	recording?: boolean
+}
 
 export interface PresState {
 	deckId: string | null
@@ -18,6 +23,7 @@ export interface PresState {
 	step: number
 	stepCount: number
 	mode: Mode
+	workflow?: Workflow
 	auto: boolean
 	agent: AgentStatus
 	takeId: string | null
@@ -46,8 +52,14 @@ export interface Highlight {
 }
 
 export type ServerMessage =
+	| { t: 'redo'; slideId: string }
 	| { t: 'state'; state: PresState }
-	| { t: 'transcript'; partial?: string; final?: Utterance; pause?: { text: string; slideIndex: number; step: number } }
+	| {
+			t: 'transcript'
+			partial?: string
+			final?: Utterance
+			pause?: { text: string; slideIndex: number; step: number }
+	  }
 	| { t: 'agent'; status: AgentStatus; message?: string }
 	| ({ t: 'highlight' } & Highlight)
 	| { t: 'deck-updated'; deckId: string; updatedAt: number }
@@ -110,8 +122,18 @@ const wsUrl = () => `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${locat
 
 const dispatch = (msg: ServerMessage) => {
 	switch (msg.t) {
+		case 'redo':
+			update({ partial: '', finals: [] })
+			break
 		case 'state':
-			update({ state: msg.state })
+			update({
+				state: msg.state,
+				...(msg.state.takeId !== snap.state.takeId ||
+				msg.state.mode !== snap.state.mode ||
+				msg.state.workflow !== snap.state.workflow
+					? { partial: '', finals: [] }
+					: {}),
+			})
 			break
 		case 'agent':
 			update({ state: { ...snap.state, agent: msg.status, agentMessage: msg.message ?? '' } })
@@ -198,7 +220,10 @@ export function send(msg: Record<string, unknown> & { t: string }) {
 	else queue.push(s)
 }
 
-export function on<T extends ServerMessage['t']>(t: T, fn: (msg: Extract<ServerMessage, { t: T }>) => void) {
+export function on<T extends ServerMessage['t']>(
+	t: T,
+	fn: (msg: Extract<ServerMessage, { t: T }>) => void
+) {
 	if (!handlers.has(t)) handlers.set(t, new Set())
 	handlers.get(t)!.add(fn)
 	return () => {
@@ -219,8 +244,16 @@ export function sendLive(msg: Record<string, unknown> & { t: string }) {
 	if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg))
 }
 
-export const nav = (action: 'next' | 'prev' | 'goto', opts: { slide?: number; step?: number; source?: NavSource } = {}) =>
-	send({ t: 'nav', action, slide: opts.slide, step: opts.step, source: opts.source ?? 'human' })
-export const setMode = (mode: Mode, auto?: boolean, deckId?: string) => send({ t: 'mode', mode, auto, deckId })
+export const nav = (
+	action: 'next' | 'prev' | 'goto',
+	opts: { slide?: number; step?: number; source?: NavSource } = {}
+) => send({ t: 'nav', action, slide: opts.slide, step: opts.step, source: opts.source ?? 'human' })
+export const setMode = (
+	mode: Mode,
+	auto?: boolean,
+	deckId?: string,
+	options: PresentationOptions = {}
+) => send({ t: 'mode', mode, auto, deckId, ...options })
 export const setBlack = (on: boolean) => send({ t: 'black', on })
-export const requestHidden = (prompt?: string) => send({ t: 'request', kind: 'hidden-slide', prompt })
+export const requestHidden = (prompt?: string) =>
+	send({ t: 'request', kind: 'hidden-slide', prompt })

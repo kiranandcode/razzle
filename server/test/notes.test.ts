@@ -47,3 +47,27 @@ test('malformed, duplicate, and unrequested slide outputs are rejected before wr
     assert.throws(() => notePatches(items, out))
   }
 })
+
+test('redo discards only the current slide before its reset; live and rehearsal takes never write notes', () => {
+  const old = take('old', [speech('a', 0, 'Discard'), speech('b', 0, 'Keep')])
+  const redo: Take = { ...take('redo', [
+    { ...speech('a', 0, 'False start'), t0: 10 },
+    { ...speech('a', 0, 'Fresh narration'), t0: 30 },
+  ], 10), workflow: 'draft', resets: [{ slideId: 'a', at: 20 }] }
+  const extra = ['present', 'rehearse'].map((workflow, i) => ({ ...take('ignore' + i, [speech('a', 0, 'Ignore')]), workflow })) as Take[]
+  const items = noteItems([slide, { ...slide, id: 'b' }], [old, redo, ...extra])
+  assert.deepEqual(items[0].spoken, [{ takeId: 'redo', steps: ['Fresh narration', ''] }])
+  assert.equal(items[0].previous, null)
+  assert.deepEqual(items[0].takeIds, ['old', 'redo'])
+  assert.equal(items[1].spoken[0].steps[0], 'Keep')
+  const patch = notePatches(items, { slides: items.map(i => ({ id: i.id, notes: ['Fresh'], script: ['Fresh', ''] })) }).get('a')!
+  assert.deepEqual(noteItems([{ ...slide, razzle: patch }], [old, redo, ...extra]), [])
+})
+
+test('corrections follow speech order even when ASR finishes out of order', () => {
+  const items = noteItems([slide], [take('r', [
+    { ...speech('a', 0, 'Actually the new wording'), t0: 20 },
+    { ...speech('a', 0, 'Earlier wording'), t0: 10 },
+  ])])
+  assert.equal(items[0].spoken[0].steps[0], 'Earlier wording Actually the new wording')
+})

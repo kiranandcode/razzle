@@ -1,5 +1,6 @@
 // Deck storage on the Razzle server (docs/DESIGN.md, "HTTP").
 import { BASE, PUBLIC } from './base'
+import type { PresentationOptions } from './client'
 import type { Deck } from './types'
 
 export interface DeckSummary {
@@ -37,14 +38,29 @@ export const saveDeck = (deck: Deck) =>
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(deck),
 	}).then((r) => json<{ ok: boolean; updatedAt: number }>(r))
-export const generateNotes = (id: string) => api(`${deckPath(id)}/notes`, { method: 'POST' }).then((r) => json<Deck>(r))
-export const saveSpeakerNotes = (id: string, slideId: string, notes: string, expectedNotes: string) =>
+export const generateNotes = (id: string) =>
+	api(`${deckPath(id)}/notes`, { method: 'POST' }).then((r) => json<Deck>(r))
+export const saveSpeakerNotes = (
+	id: string,
+	slideId: string,
+	notes: string,
+	expectedNotes: string
+) =>
 	api(`${deckPath(id)}/speech`, {
-		method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slideId, notes, expectedNotes }),
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ slideId, notes, expectedNotes }),
 	}).then((r) => json<Deck>(r))
-export const present = (deckId: string, slide?: number) =>
+export const present = (deckId: string, slide?: number, options: PresentationOptions = {}) =>
 	api('/present', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ deckId, slide }),
+		body: JSON.stringify({ deckId, slide, ...options }),
 	})
+
+export const redoNarration = (slideId: string) =>
+	api('/redo', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ slideId }),
+	}).then((r) => json<{ ok: boolean }>(r))

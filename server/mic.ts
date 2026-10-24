@@ -15,7 +15,7 @@
 
 export type AsrEvent =
   | { kind: 'segment-start', segId: number, t0: number }
-  | { kind: 'partial' | 'late-partial' | 'pause', segId: number, text: string }
+  | { kind: 'partial' | 'late-partial' | 'pause', segId: number, text: string, t1?: number }
   | { kind: 'final', segId: number, text: string, t0: number, t1: number }
 
 const MAX_TEXT = 4000
@@ -78,7 +78,7 @@ export class BrowserMic<C = unknown> {
       case 'pause':
         if (!seg) return null
         seg.closed = true
-        return { kind: 'pause', segId: seg.id, text }
+        return { kind: 'pause', segId: seg.id, text, t1: timeOr(msg.t1, now) }
       case 'final': {
         if (!seg) return null
         this.segs.delete(key)

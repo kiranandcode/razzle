@@ -974,3 +974,26 @@
 .rz-code-fit:hover {
 	background: var(--tl-color-muted-2);
 }
+
+.rz-studio:has(.rz-build-timeline) { --rz-right: min(440px, 45vw); }
+.rz-timeline-actions { display: flex; gap: 6px; margin-bottom: 10px; }
+.rz-timeline-actions button:disabled { opacity: .4; cursor: default; }
+.rz-build-timeline { overflow: auto; max-height: 340px; border: 1px solid var(--tl-color-divider); border-radius: 4px; }
+.rz-timeline-grid { display: grid; width: max-content; isolation: isolate; }
+.rz-timeline-row { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; position: relative; }
+.rz-timeline-grid button { font: inherit; color: inherit; cursor: pointer; }
+.rz-timeline-heading { position: sticky; top: 0; z-index: 4; height: 46px; background: var(--tl-color-panel); border-bottom: 1px solid var(--tl-color-divider); text-align: center; }
+.rz-timeline-step, .rz-timeline-insert { display: block; width: 100%; height: 23px; padding: 0; border: 0; background: none; }
+.rz-timeline-step:disabled, .rz-timeline-insert:disabled { opacity: .3; cursor: default; }
+.rz-timeline-insert { color: var(--tl-color-selected) !important; }
+.rz-timeline-label { position: sticky; left: 0; z-index: 3; padding: 8px; border: 0; border-bottom: 1px solid var(--tl-color-divider); background: var(--tl-color-panel); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.rz-timeline-label.rz-timeline-heading { z-index: 5; display: flex; align-items: center; }
+.rz-timeline-row[data-selected='true'] .rz-timeline-label { color: var(--tl-color-selected); font-weight: 600; }
+.rz-timeline-cell { position: relative; height: 32px; border-left: 1px solid var(--tl-color-divider); border-bottom: 1px solid var(--tl-color-divider); }
+.rz-timeline-cell[data-span='true'] { background: var(--tl-color-muted-2); }
+.rz-timeline-cell[data-preview='true'], .rz-timeline-heading[data-preview='true'] { background: var(--tl-color-low); }
+.rz-timeline-slot { width: 100%; height: 100%; border: 0; background: none; }
+.rz-timeline-slot:hover, .rz-timeline-insert:hover { background: var(--tl-color-muted-2); }
+.rz-timeline-build { position: absolute; top: 0; z-index: 2; width: 28px; height: 24px; margin: 3px; border: 0; border-radius: 4px; background: var(--tl-color-selected); color: var(--tl-color-selected-contrast) !important; cursor: ew-resize !important; touch-action: none; }
+.rz-timeline-build[data-effect='disappear'] { background: #a45454; }
+.rz-timeline-build[data-effect='fade'] { background: #687fa4; }

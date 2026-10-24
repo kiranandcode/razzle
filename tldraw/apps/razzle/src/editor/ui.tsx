@@ -51,6 +51,7 @@ import {
 import { razzleThemeOverrides } from '../theme'
 import { BuildBadges, BuildPreviewStyle } from './BuildsPanel'
 import { SlideNumbers } from '../model/SlideNumbers'
+import { RazzleContextMenu } from './ContextMenu'
 import { CodeStylePanel, insertCodeBlock, useCodeSelected } from './CodeStylePanel'
 import { addSlide, zoomToSlide } from './slideOps'
 import { $libraryOpen } from './state'
@@ -244,6 +245,7 @@ function InFront() {
 }
 
 export const studioComponents: TLComponents = {
+	ContextMenu: RazzleContextMenu,
 	MenuPanel: RazzleMenuPanel,
 	SharePanel: RazzleSharePanel,
 	TopPanel: RecordingCaption,

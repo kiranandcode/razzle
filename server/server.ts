@@ -24,8 +24,9 @@ import { createAuth } from './auth.ts'
 import { CueTracker, type Cue } from './cues.ts'
 import {
   applyNav, initialState, newClock, stepCountOf,
-  type Mode, type NavRequest, type PresState, type AgentStatus, type NavSource,
+  type Workflow, type Mode, type NavRequest, type PresState, type AgentStatus, type NavSource,
 } from './state.ts'
+import { deliveryPatches } from './delivery.ts'
 import { codexJSON } from './codex.ts'
 import { noteItems, notePatches, noteBaseline, NOTES_PROMPT, NOTES_SCHEMA, type Utterance, type Take } from './notes.ts'
 import { escapeHtml, expandLibraryRefs, libraryEntries, validateSlide, newId, type Json } from './slides.ts'
@@ -118,7 +119,7 @@ function saveTake(take: Take) {
   void pending.finally(() => { if (takeWrites.get(take.id) === pending) takeWrites.delete(take.id) }).catch(() => {})
   return pending
 }
-const segInfo = new Map<number, { slideId: string, slideIndex: number, step: number, takeId: string | null }>()
+const segInfo = new Map<number, { slideId: string, slideIndex: number, step: number, takeId: string | null, recordedAt: number, visitAt: number, session: number }>()
 
 interface Client { ws: WebSocket, role: string, deckId?: string }
 const clients = new Set<Client>()
@@ -157,15 +158,25 @@ function refreshFromDeck() {
   state = { ...state, slideIndex, stepCount, step: Math.min(state.step, stepCount - 1) }
 }
 
+let enteredAt = Date.now()
+let sessionNumber = 0
+
 function nav(req: NavRequest): { accepted: boolean, reason?: string } {
   if (!deck) return { accepted: false, reason: 'no deck' }
-  if (req.source === 'agent' && req.action !== 'goto' && !state.auto) return { accepted: false, reason: 'auto is off' }
+  if (req.source !== 'human' && (state.workflow !== 'present' || !state.auto)) return { accepted: false, reason: 'auto is off' }
   const before = state
   const r = applyNav(state, slides() as any, req, clock, Date.now(), stepsAt)
   if (!r.accepted) {
     log(`nav ${req.action} (${req.source}) dropped: ${r.reason}`)
     return { accepted: false, reason: r.reason }
   }
+  const take = before.takeId ? openTakes.get(before.takeId) : null
+  if (take?.workflow === 'rehearse' && req.source === 'human' && req.action === 'next') {
+    const s = slides()[before.slideIndex]
+    ;(take.transitions ??= []).push({ slideId: s.id, step: before.step, enteredAt, at: Date.now(), script: s.razzle?.script?.[before.step] ?? '', steps: stepsAt(before.slideIndex) })
+    void saveTake(take).catch(e => log('take transition:', e.message))
+  }
+  enteredAt = Date.now()
   state = r.state
   cues.onNav()
   log(`nav ${req.action} (${req.source}) ${before.slideIndex}.${before.step} -> ${state.slideIndex}.${state.step}`)
@@ -173,22 +184,29 @@ function nav(req: NavRequest): { accepted: boolean, reason?: string } {
   return { accepted: true }
 }
 
-async function setMode(mode: Mode, opts: { auto?: boolean, deckId?: string } = {}) {
+async function setMode(mode: Mode, opts: { auto?: boolean, deckId?: string, workflow?: Workflow, recording?: boolean } = {}) {
+  if (!['idle', 'record', 'present'].includes(mode)) throw new Error('invalid mode')
+  if (opts.workflow !== undefined && !['draft', 'rehearse', 'present'].includes(opts.workflow)) throw new Error('invalid workflow')
   const changingDeck = !!opts.deckId && opts.deckId !== state.deckId
-  if (state.takeId && (mode === 'idle' || changingDeck)) closeTake()
-  if (opts.deckId && opts.deckId !== state.deckId) await setDeck(opts.deckId)
-  if (typeof opts.auto === 'boolean') state = { ...state, auto: opts.auto }
-  const prev = state.mode
+  const workflow = opts.workflow ?? (state.mode !== 'idle' && !changingDeck ? state.workflow : mode === 'record' ? 'draft' : 'present') ?? 'present'
+  const recording = workflow !== 'present' || (opts.recording ?? (state.mode !== 'idle' && !changingDeck && state.workflow === workflow ? !!state.takeId : false))
+  const newSession = state.mode === 'idle' || changingDeck || workflow !== state.workflow || (mode !== 'idle' && recording !== !!state.takeId)
+  if (state.takeId && (mode === 'idle' || newSession)) closeTake()
+  if (opts.deckId && changingDeck) await setDeck(opts.deckId)
   if (mode !== 'idle' && !deck) throw new Error('no deck selected (pass deckId)')
-  state = { ...state, mode }
-  if (mode !== 'idle' && (prev === 'idle' || changingDeck || !state.takeId)) {
-    const take: Take = { id: `${new Date().toISOString().replace(/[:.]/g, '-')}-${newId(4)}`, deckId: deck!.id, startedAt: Date.now(), utterances: [] }
+  state = { ...state, mode, workflow, auto: workflow === 'present' && (opts.auto ?? (newSession ? true : state.auto)) }
+  if (newSession || mode === 'idle') {
+    sessionNumber++
+    enteredAt = Date.now()
+    state = { ...state, takeId: null }
+  }
+  if (mode !== 'idle' && newSession && recording) {
+    const take: Take = { id: `${new Date().toISOString().replace(/[:.]/g, '-')}-${newId(4)}`, deckId: deck!.id, startedAt: Date.now(), workflow, utterances: [] }
     openTakes.set(take.id, take)
     state = { ...state, takeId: take.id }
     await saveTake(take)
     log(`record: take ${take.id}`)
   }
-  if (mode === 'idle') state = { ...state, takeId: null }
   broadcastState()
   if (AUDIO_SOURCE !== 'local') return
   if (mode === 'idle') { if (audio.running) audio.stop() }
@@ -220,7 +238,7 @@ function closeTake() {
     await saveTake(take)
     openTakes.delete(take.id)
     log(`record: take ${take.id} closed, ${take.utterances.length} utterances`)
-    if (take.utterances.length) void generateNotes(take.deckId).catch(e => log('notes:', e.message))
+    if (take.utterances.length && take.workflow !== 'present') void generateNotes(take.deckId, take.workflow).catch(e => log('notes:', e.message))
   }).catch(e => {
     log('take close failed:', e.message)
     broadcast({ t: 'error', message: `Could not save recording: ${e.message}` })
@@ -233,7 +251,7 @@ function currentCues(): Cue[] {
 }
 
 function onTranscript(segId: number, text: string, isFinal: boolean) {
-  if (!deck || state.mode === 'idle') return
+  if (!deck || state.mode === 'idle' || state.workflow !== 'present' || !state.auto) return
   const hit = cues.feed(segId, text, isFinal, currentCues(), state.step)
   if (!hit) return
   const { cue } = hit
@@ -248,38 +266,45 @@ function onTranscript(segId: number, text: string, isFinal: boolean) {
 /** Every speech event, from either audio source (mic.ts lists them), comes through here. */
 function ingest(ev: AsrEvent) {
   const { segId } = ev
+  const current = segInfo.get(segId)?.session === sessionNumber && state.mode !== 'idle'
   switch (ev.kind) {
     case 'segment-start': {
       const s = slides()[state.slideIndex]
-      segInfo.set(segId, { slideId: s?.id ?? '', slideIndex: state.slideIndex, step: state.step, takeId: state.takeId })
+      broadcast({ t: 'speech-start', segId })
+      segInfo.set(segId, { slideId: s?.id ?? '', slideIndex: state.slideIndex, step: state.step, takeId: state.takeId, recordedAt: Date.now(), visitAt: enteredAt, session: sessionNumber })
       break
     }
     case 'partial':
+      if (!current) break
       broadcast({ t: 'transcript', partial: ev.text })
       onTranscript(segId, ev.text, false)
       break
     case 'late-partial':
+      if (!current) break
       onTranscript(segId, ev.text, false)
       break
     case 'pause': {
+      if (!current) break
       // the speaker paused: the closed segment's fast text, tagged with where it began
       const info = segInfo.get(segId)
-      broadcast({ t: 'transcript', segId, pause: { text: ev.text, slideIndex: info?.slideIndex ?? state.slideIndex, step: info?.step ?? state.step } })
+      broadcast({ t: 'transcript', segId, pause: { text: ev.text, t1: ev.t1 ?? Date.now(), slideIndex: info?.slideIndex ?? state.slideIndex, step: info?.step ?? state.step } })
       break
     }
     case 'final': {
       const { text, t0, t1 } = ev
       const info = segInfo.get(segId)
       segInfo.delete(segId)
-      if (!text) { onTranscript(segId, '', true); return }
+      if (!text) { if (current) onTranscript(segId, '', true); return }
       const s = slides()[state.slideIndex]
       const u: Utterance = {
-        text, t0, t1,
+        text, t0, t1, recordedAt: info?.recordedAt, visitAt: info?.visitAt,
         slideId: info?.slideId ?? s?.id ?? '', slideIndex: info?.slideIndex ?? state.slideIndex, step: info?.step ?? state.step,
       }
       log(`final [${u.slideIndex}.${u.step}] ${text}`)
-      broadcast({ t: 'transcript', segId, final: u })
-      onTranscript(segId, text, true)
+      if (current) {
+        broadcast({ t: 'transcript', segId, final: u })
+        onTranscript(segId, text, true)
+      }
       const take = info?.takeId ? openTakes.get(info.takeId) : null
       if (take) {
         take.utterances.push(u)
@@ -297,7 +322,7 @@ audio.on('stopped', () => setMicActive(false))
 audio.on('source-ended', () => setMicActive(false))
 audio.on('segment-start', ({ segId, t0 }: { segId: number, t0: number }) => ingest({ kind: 'segment-start', segId, t0 }))
 for (const kind of ['partial', 'late-partial', 'pause'] as const) {
-  audio.on(kind, ({ segId, text }: { segId: number, text: string }) => ingest({ kind, segId, text }))
+  audio.on(kind, ({ segId, text, t1 }: { segId: number, text: string, t1?: number }) => ingest({ kind, segId, text, t1 }))
 }
 audio.on('final', ({ segId, text, t0, t1 }: { segId: number, text: string, t0: number, t1: number }) => ingest({ kind: 'final', segId, text, t0, t1 }))
 
@@ -412,13 +437,13 @@ function publishNotes(id: string, status: 'writing' | 'saved' | 'error', message
   broadcast(event)
 }
 
-function generateNotes(id: string): Promise<Deck> {
+function generateNotes(id: string, workflow?: Workflow): Promise<Deck> {
   const previous = noteJobs.get(id) ?? Promise.resolve()
   const job = previous.catch(() => {}).then(async () => {
-    publishNotes(id, 'writing', 'Updating notes from your rehearsal…')
+    publishNotes(id, 'writing', 'Processing draft notes and rehearsal timing…')
     try {
-      const result = await writeNotes(id)
-      publishNotes(id, 'saved', 'Notes updated')
+      const result = await writeNotes(id, workflow)
+      publishNotes(id, 'saved', 'Draft notes and rehearsal timing saved')
       return result
     } catch (e) {
       publishNotes(id, 'error', 'Recording saved. Notes failed: ' + (e as Error).message)
@@ -430,17 +455,19 @@ function generateNotes(id: string): Promise<Deck> {
   return job
 }
 
-async function writeNotes(id: string): Promise<Deck> {
+async function writeNotes(id: string, workflow?: Workflow): Promise<Deck> {
   const d = await readDeck(id)
   if (!d) throw new Error('no such deck')
   const takes = await listTakes(id)
-  const items = noteItems(d.slides, takes)
-  if (!items.length) {
+  const items = workflow === 'rehearse' ? [] : noteItems(d.slides, takes)
+  const timing = deliveryPatches(d.slides, takes)
+  if (!items.length && !timing.size) {
     if (!takes.some(t => t.endedAt && t.utterances.length)) throw new Error('No finished recording yet. Stop the run first.')
     return d
   }
-  const out = await codexJSON(NOTES_PROMPT + '\nDeck: ' + d.title + '\n' + JSON.stringify(items.map(({ baseline, takeIds, ...item }) => item)), NOTES_SCHEMA)
+  const out = items.length ? await codexJSON(NOTES_PROMPT + '\nDeck: ' + d.title + '\n' + JSON.stringify(items.map(({ baseline, takeIds, ...item }) => item)), NOTES_SCHEMA) : { slides: [] }
   const patches = notePatches(items, out)
+  for (const [slideId, patch] of timing) patches.set(slideId, { ...patches.get(slideId), ...patch })
   return withDeckLock(id, async () => {
     const fresh = await readDeck(id)
     if (!fresh) throw new Error('deck was removed')
@@ -455,8 +482,10 @@ async function writeNotes(id: string): Promise<Deck> {
     for (const s of fresh.slides) {
       const patch = patches.get(s.id)
       if (!patch) continue
+      // Drop timing learned against an older script while this job was running.
+      if (patch.delivery && JSON.stringify(s.razzle?.script) !== JSON.stringify(d.slides.find(x => x.id === s.id)?.razzle?.script)) delete patch.delivery
       if (isDeckV2(fresh)) updateSlideMeta(fresh, s.id, patch)
-      else { s.remark = patch.notes; s.razzle = { ...(s.razzle ?? {}), ...patch } }
+      else { if (patch.notes !== undefined) s.remark = patch.notes; s.razzle = { ...(s.razzle ?? {}), ...patch } }
     }
     if (isDeckV2(fresh)) fresh.slides = refreshSlides(fresh)
     fresh.updatedAt = Math.max(Date.now(), (fresh.updatedAt ?? 0) + 1)
@@ -637,14 +666,26 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   if (p === '/api/mode' && m === 'POST') {
     const b = await body(req)
     if (!['idle', 'record', 'present'].includes(b.mode)) return json(res, 400, { error: 'mode must be idle|record|present' })
-    try { await setMode(b.mode, { auto: b.auto, deckId: b.deckId }) } catch (e) { return json(res, 400, { error: (e as Error).message }) }
+    try { await setMode(b.mode, { auto: b.auto, deckId: b.deckId, workflow: b.workflow, recording: b.recording }) } catch (e) { return json(res, 400, { error: (e as Error).message }) }
     return json(res, 200, { ok: true, state })
+  }
+  if (p === '/api/redo' && m === 'POST') {
+    const b = await body(req)
+    const take = state.takeId ? openTakes.get(state.takeId) : null
+    const slide = slides()[state.slideIndex]
+    if (state.workflow !== 'draft' || !take || b.slideId !== slide?.id) return json(res, 409, { error: 'Start a draft on this slide before redoing its narration.' })
+    ;(take.resets ??= []).push({ slideId: slide.id, at: Date.now() })
+    if (AUDIO_SOURCE === 'local') audio.flush()
+    broadcast({ t: 'redo', slideId: slide.id })
+    nav({ action: 'goto', slide: state.slideIndex, step: 0, source: 'human' })
+    await saveTake(take)
+    return json(res, 200, { ok: true })
   }
   if (p === '/api/present' && m === 'POST') {
     const b = await body(req)
     const id = String(b.deckId ?? state.deckId ?? '')
     if (!validId(id) || !(await readDeck(id))) return json(res, 404, { error: 'no such deck' })
-    await setMode('present', { deckId: id })
+    await setMode('present', { deckId: id, workflow: b.workflow, recording: b.recording })
     if (typeof b.slide === 'number') {
       const moved = applyNav(state, slides() as any, { action: 'goto', slide: b.slide, source: 'human' }, clock, Date.now(), stepsAt)
       state = moved.state
@@ -740,7 +781,7 @@ wss.on('connection', (ws: WebSocket) => {
           break
         }
         case 'mode':
-          try { await setMode(msg.mode, { auto: msg.auto, deckId: msg.deckId }) } catch (e) { send(c, { t: 'error', message: (e as Error).message }) }
+          try { await setMode(msg.mode, { auto: msg.auto, deckId: msg.deckId, workflow: msg.workflow, recording: msg.recording }) } catch (e) { send(c, { t: 'error', message: (e as Error).message }) }
           break
         case 'steps': {
           // a screen's own count of build steps; ignored unless it names a real slide and a sane count
@@ -794,9 +835,9 @@ wss.on('connection', (ws: WebSocket) => {
       setAgent('offline')
     }
     if (c.role === 'speaker') {
-      const takeId = state.takeId
+      const session = sessionNumber
       setTimeout(() => {
-        if (takeId && state.takeId === takeId && state.mode === 'present' && ![...clients].some(x => x.role === 'speaker')) {
+        if (session === sessionNumber && state.mode === 'present' && ![...clients].some(x => x.role === 'speaker')) {
           void setMode('idle').catch(e => log('presenter close:', e.message))
         }
       }, 5000).unref()

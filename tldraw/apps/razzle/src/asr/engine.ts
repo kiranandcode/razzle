@@ -15,7 +15,16 @@ import { rms, SEG_TUNING, Segmenter, type SegEvent } from './segmenter'
 import type { AsrOverrides } from './worker'
 
 /** Transcription times (ms) of this page's partials and pauses, for diagnostics (window.__razzleAsr). */
-export const stats = { device: null as 'webgpu' | 'wasm' | null, model: '', loadMs: 0, samples: 0, peak: 0, segments: 0, partial: [] as number[], pause: [] as number[] }
+export const stats = {
+	device: null as 'webgpu' | 'wasm' | null,
+	model: '',
+	loadMs: 0,
+	samples: 0,
+	peak: 0,
+	segments: 0,
+	partial: [] as number[],
+	pause: [] as number[],
+}
 ;(globalThis as any).__razzleAsr = stats
 
 // localStorage 'razzle-asr' = '{"device":"wasm"}' forces the CPU path (when WebGPU misbehaves);
@@ -64,12 +73,18 @@ type WorkerOut =
 let worker: Worker | null = null
 let ready: Promise<{ device: 'webgpu' | 'wasm'; model: string }> | null = null
 let jobId = 0
-const jobs = new Map<number, { resolve: (r: { text: string; ms: number }) => void; reject: (e: Error) => void }>()
+const jobs = new Map<
+	number,
+	{ resolve: (r: { text: string; ms: number }) => void; reject: (e: Error) => void }
+>()
 
 function loadModel(): Promise<{ device: 'webgpu' | 'wasm'; model: string }> {
 	if (ready) return ready
 	ready = new Promise((resolve, reject) => {
-		worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module', name: 'razzle-asr' })
+		worker = new Worker(new URL('./worker.ts', import.meta.url), {
+			type: 'module',
+			name: 'razzle-asr',
+		})
 		const fail = (error: Error) => {
 			clearTimeout(timer)
 			worker?.terminate()
@@ -82,7 +97,10 @@ function loadModel(): Promise<{ device: 'webgpu' | 'wasm'; model: string }> {
 				void stop().then(() => setMicView({ status: 'error', message: error.message }))
 			}
 		}
-		const timer = setTimeout(() => fail(new Error('Speech model startup timed out. Click the mic to retry.')), 120000)
+		const timer = setTimeout(
+			() => fail(new Error('Speech model startup timed out. Click the mic to retry.')),
+			120000
+		)
 		worker.onmessage = (ev: MessageEvent<WorkerOut>) => {
 			const m = ev.data
 			if (m.type === 'progress') setMicView({ progress: m.total ? m.loaded / m.total : null })
@@ -154,9 +172,14 @@ let run = 0
 
 function micError(e: unknown): Error {
 	const name = (e as any)?.name
-	if (name === 'NotAllowedError' || name === 'SecurityError') return new Error('Microphone permission was denied. Allow it in the browser’s site settings and try again.')
-	if (name === 'NotFoundError' || name === 'OverconstrainedError') return new Error('No microphone was found.')
-	if (name === 'NotReadableError') return new Error('The microphone is in use by another application.')
+	if (name === 'NotAllowedError' || name === 'SecurityError')
+		return new Error(
+			'Microphone permission was denied. Allow it in the browser’s site settings and try again.'
+		)
+	if (name === 'NotFoundError' || name === 'OverconstrainedError')
+		return new Error('No microphone was found.')
+	if (name === 'NotReadableError')
+		return new Error('The microphone is in use by another application.')
 	return e instanceof Error ? e : new Error(String(e))
 }
 
@@ -165,7 +188,8 @@ const accepting = () => getRazzle().state.mode !== 'idle'
 export async function start(): Promise<void> {
 	if (session) return
 	const my = ++run
-	if (!navigator.mediaDevices?.getUserMedia) throw new Error('This page cannot use the microphone (it needs https or localhost).')
+	if (!navigator.mediaDevices?.getUserMedia)
+		throw new Error('This page cannot use the microphone (it needs https or localhost).')
 	if (typeof AudioWorkletNode === 'undefined') throw new Error('This browser has no AudioWorklet.')
 	setMicView({ status: 'loading', message: '', progress: null })
 	// the model and the permission prompt in parallel
@@ -174,7 +198,12 @@ export async function start(): Promise<void> {
 	let stream: MediaStream
 	try {
 		stream = await navigator.mediaDevices.getUserMedia({
-			audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+			audio: {
+				echoCancellation: true,
+				noiseSuppression: true,
+				autoGainControl: true,
+				channelCount: 1,
+			},
 		})
 	} catch (e) {
 		model.catch(() => {}) // still loading; kept for the next try
@@ -202,23 +231,54 @@ export async function start(): Promise<void> {
 		return
 	}
 	const src = ctx.createMediaStreamSource(stream)
-	const node = new AudioWorkletNode(ctx, 'razzle-downsample', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] })
+	const node = new AudioWorkletNode(ctx, 'razzle-downsample', {
+		numberOfInputs: 1,
+		numberOfOutputs: 1,
+		outputChannelCount: [1],
+	})
 	const mute = ctx.createGain()
 	mute.gain.value = 0
 	src.connect(node).connect(mute).connect(ctx.destination)
 
 	const s: Session = {
-		stream, ctx, node, seg: new Segmenter(Date.now()), timer: 0 as any, unsub: [], live: new Set(), pending: [],
-		partialBusy: false, held: false, level: 0, levelAt: 0, modelReady: false, notice: '',
+		stream,
+		ctx,
+		node,
+		seg: new Segmenter(Date.now()),
+		timer: 0 as any,
+		unsub: [],
+		live: new Set(),
+		pending: [],
+		partialBusy: false,
+		held: false,
+		level: 0,
+		levelAt: 0,
+		modelReady: false,
+		notice: '',
 	}
 	session = s
 	node.port.onmessage = (ev: MessageEvent<Float32Array>) => onSamples(s, ev.data)
 	s.timer = setInterval(() => tickPartial(s), SEG_TUNING.partialEveryMs)
 
-	let position = JSON.stringify([getRazzle().state.deckId, getRazzle().state.slideIndex, getRazzle().state.step, getRazzle().state.mode])
+	let position = JSON.stringify([
+		getRazzle().state.deckId,
+		getRazzle().state.slideIndex,
+		getRazzle().state.step,
+		getRazzle().state.mode,
+		getRazzle().state.takeId,
+		getRazzle().state.workflow,
+	])
 	s.unsub.push(
+		on('redo', () => s.seg.flush().forEach((e) => onSegEvent(s, e))),
 		on('state', ({ state }) => {
-			const next = JSON.stringify([state.deckId, state.slideIndex, state.step, state.mode])
+			const next = JSON.stringify([
+				state.deckId,
+				state.slideIndex,
+				state.step,
+				state.mode,
+				state.takeId,
+				state.workflow,
+			])
 			if (position !== next) s.seg.flush().forEach((e) => onSegEvent(s, e))
 			position = next
 		}),
@@ -243,7 +303,9 @@ export async function start(): Promise<void> {
 		})
 	)
 	const tracks = stream.getAudioTracks()
-	tracks.forEach((t) => (t.onended = () => session === s && void stop('The microphone was disconnected.')))
+	tracks.forEach(
+		(t) => (t.onended = () => session === s && void stop('The microphone was disconnected.'))
+	)
 
 	// claimed from here on; the server answers {t:'mic', held} and tells us if another screen takes it
 	send({ t: 'mic', on: true })
@@ -264,15 +326,23 @@ export async function start(): Promise<void> {
 
 function updateCaptureStatus(s: Session) {
 	if (session !== s) return
-	if (s.ctx.state !== 'running') setMicView({ status: 'waiting', message: 'Click the mic or press a key to start listening.' })
-	else setMicView({ status: s.modelReady ? 'listening' : 'loading', message: s.modelReady ? s.notice : 'Capturing speech while the model loads…' })
+	if (s.ctx.state !== 'running')
+		setMicView({ status: 'waiting', message: 'Click the mic or press a key to start listening.' })
+	else
+		setMicView({
+			status: s.modelReady ? 'listening' : 'loading',
+			message: s.modelReady ? s.notice : 'Capturing speech while the model loads…',
+		})
 }
 
 // resume() may stay pending until a gesture. Register that gesture before calling it.
 function resumeAudio(s: Session) {
 	const go = () => {
 		if (s.ctx.state === 'running' || session !== s) return
-		void s.ctx.resume().then(() => updateCaptureStatus(s)).catch(() => {})
+		void s.ctx
+			.resume()
+			.then(() => updateCaptureStatus(s))
+			.catch(() => {})
 	}
 	s.ctx.onstatechange = () => updateCaptureStatus(s)
 	window.addEventListener('pointerdown', go, true)
@@ -294,7 +364,11 @@ export async function stop(message = ''): Promise<void> {
 	run++
 	const s = session
 	if (!s) {
-		setMicView({ status: getMicView().status === 'error' ? 'error' : 'off', level: 0, ...(message ? { message } : {}) })
+		setMicView({
+			status: getMicView().status === 'error' ? 'error' : 'off',
+			level: 0,
+			...(message ? { message } : {}),
+		})
 		return
 	}
 	session = null
@@ -339,18 +413,23 @@ function onSegEvent(s: Session, e: SegEvent) {
 		sendLive({ t: 'asr', kind: 'final', segId: e.segId, text: '' })
 		return
 	}
-	// closed: one transcription, sent as the pause (cue matching, the director) and the final
+	// The final already reaches cues and the director; sending an identical pause starts a duplicate model request.
 	const job = transcribe(e.pcm).then(
 		({ text, ms }) => {
 			setMicView({ pauseMs: ms })
+			if (session === s && getMicView().message.startsWith('Transcription failed:'))
+				setMicView({ message: s.notice })
 			stats.pause.push(ms)
 			if (!s.live.has(e.segId)) return
 			s.live.delete(e.segId)
-			if (!e.flush) sendLive({ t: 'asr', kind: 'pause', segId: e.segId, text })
 			sendLive({ t: 'asr', kind: 'final', segId: e.segId, text, t0: e.t0, t1: e.t1 })
 		},
 		(err) => {
 			console.warn('[razzle asr] transcription failed:', err)
+			if (session === s)
+				setMicView({
+					message: `Transcription failed: ${err instanceof Error ? err.message : String(err)}. Turn the microphone off and on to retry.`,
+				})
 			if (s.live.delete(e.segId)) sendLive({ t: 'asr', kind: 'final', segId: e.segId, text: '' })
 		}
 	)
@@ -362,16 +441,31 @@ async function tickPartial(s: Session) {
 	const open = s.seg.open
 	// skip while the speaker has gone quiet: nothing new to transcribe, and the segment is about to
 	// close, when a partial still running would delay its pause transcription
-	if (!s.modelReady || !open || s.partialBusy || !s.live.has(open.segId) || open.ms < 400 || open.silentMs >= 200) return
+	if (
+		!s.modelReady ||
+		!open ||
+		s.partialBusy ||
+		!s.live.has(open.segId) ||
+		open.ms < 400 ||
+		open.silentMs >= 200
+	)
+		return
 	s.partialBusy = true
 	try {
 		const { text, ms } = await transcribe(open.pcm())
 		setMicView({ partialMs: ms })
+		if (session === s && getMicView().message.startsWith('Transcription failed:'))
+			setMicView({ message: s.notice })
 		stats.partial.push(ms)
 		// after the segment closed this is stale; the server treats it as a late partial (cues only)
-		if (text && s.live.has(open.segId)) sendLive({ t: 'asr', kind: 'partial', segId: open.segId, text })
+		if (text && s.live.has(open.segId))
+			sendLive({ t: 'asr', kind: 'partial', segId: open.segId, text })
 	} catch (err) {
 		console.warn('[razzle asr] partial failed:', err)
+		if (session === s)
+			setMicView({
+				message: `Transcription failed: ${err instanceof Error ? err.message : String(err)}. Turn the microphone off and on to retry.`,
+			})
 	} finally {
 		s.partialBusy = false
 	}

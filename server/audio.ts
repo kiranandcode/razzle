@@ -226,6 +226,8 @@ export class AudioPipeline extends EventEmitter {
   }
 
   /** Resolves when every queued final transcription has completed. */
+  flush(): void { this.closeSegment(true) }
+
   drain(): Promise<void> { return this.finalQueue }
 
   private stopPartials() {
@@ -308,7 +310,7 @@ export class AudioPipeline extends EventEmitter {
     // waiting for the accurate model, and the director gets the speaker's pause
     if (!flush) this.fast.transcribe(padded).then(text => {
       if (text) this.emit('late-partial', { segId: seg.id, text })
-      this.emit('pause', { segId: seg.id, text })
+      this.emit('pause', { segId: seg.id, text, t1 })
     }, () => {})
     this.finalQueue = this.finalQueue.then(async () => {
       try {

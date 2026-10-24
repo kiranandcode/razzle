@@ -1,6 +1,6 @@
-import react from '@vitejs/plugin-react'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 
 // The repo's shared/ folder (library made by the PPTist converter), served at /razzle-shared/
@@ -24,7 +24,12 @@ function razzleShared(): Plugin {
 		generateBundle() {
 			for (const name of SHARED_FILES) {
 				const file = resolve(SHARED, name)
-				if (existsSync(file)) this.emitFile({ type: 'asset', fileName: `razzle-shared/${name}`, source: readFileSync(file) })
+				if (existsSync(file))
+					this.emitFile({
+						type: 'asset',
+						fileName: `razzle-shared/${name}`,
+						source: readFileSync(file),
+					})
 			}
 		},
 	}
@@ -41,7 +46,11 @@ function razzlePublicAsr(): Plugin {
 		enforce: 'pre',
 		resolveId(id, importer) {
 			if (!PUBLIC_BUILD || !importer) return null
-			if (/(^|\/)asr\/(mic|MicToggle|engine|worker)(\.tsx?)?$/.test(id) && !importer.includes('/src/asr/')) return ASR_STUB
+			if (
+				/(^|\/)asr\/(mic|MicToggle|RedoNarration|engine|worker)(\.tsx?)?$/.test(id) &&
+				!importer.includes('/src/asr/')
+			)
+				return ASR_STUB
 			return null
 		},
 	}

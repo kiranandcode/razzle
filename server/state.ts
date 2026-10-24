@@ -4,6 +4,7 @@
 export type NavSource = 'human' | 'agent' | 'cue'
 export type NavAction = 'next' | 'prev' | 'goto'
 export type Mode = 'idle' | 'record' | 'present'
+export type Workflow = 'draft' | 'rehearse' | 'present'
 export type AgentStatus = 'offline' | 'listening' | 'thinking' | 'acting' | 'ready'
 
 export interface PresState {
@@ -12,6 +13,7 @@ export interface PresState {
   step: number
   stepCount: number
   mode: Mode
+  workflow?: Workflow
   auto: boolean
   agent: AgentStatus
   takeId: string | null

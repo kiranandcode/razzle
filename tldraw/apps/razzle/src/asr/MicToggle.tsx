@@ -3,6 +3,16 @@
 import { useRazzle } from '../model/client'
 import './mic.css'
 import { micToggle, useBrowserMic, useMic, type MicView } from './mic'
+import { transcriptStatus } from './transcriptStatus'
+
+export function TranscriptStatus() {
+	const connected = useRazzle((s) => s.connected)
+	const active = useRazzle((s) => s.state.mode !== 'idle')
+	const browser = useRazzle((s) => s.state.mic.source === 'browser')
+	const micActive = useRazzle((s) => s.state.mic.active)
+	const text = useMic((v) => transcriptStatus(v, { connected, active, browser, micActive }))
+	return <span className="rz-idle" role="status">{text}</span>
+}
 
 function label(v: MicView, elsewhere: boolean) {
 	if (v.status === 'loading') return v.progress !== null ? `Loading ${Math.round(v.progress * 100)}%` : 'Starting…'

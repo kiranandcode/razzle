@@ -34,11 +34,11 @@ decks/       <deckId>.json  (+ <deckId>/takes/*.json recordings)
 | PUT | `/api/decks/:id` | `Deck` → `{ok, updatedAt}`; broadcasts `deck-updated` |
 | POST | `/api/decks/:id/slides` | `{slide, hidden?}`: append one slide written as PPTist-style JSON (library refs `{type:'library', ref, left, top, texts?}` allowed), converted to a tldraw frame in the next grid cell → `{slideIndex, frameId}` |
 | GET | `/api/decks/:id/takes` | `[Take]` |
-| POST | `/api/decks/:id/notes` | generate speaker notes + `razzle.script` from the takes (Claude); returns the new `Deck` |
+| POST | `/api/decks/:id/notes` | refine draft notes + `razzle.script` with Codex; save rehearsal transition examples; returns the new `Deck` |
 | GET | `/api/state` | `PresState` |
 | POST | `/api/nav` | `{action, slide?, step?, source}` (same as the `nav` message) → `{ok, accepted, reason?, state}` |
 | POST | `/api/mode` | `{mode, auto?, deckId?}` → `{ok, state}` |
-| POST | `/api/present` | `{deckId, slide?}`: launches the presenter app (or opens browser windows) |
+| POST | `/api/present` | `{deckId, slide?, workflow?, recording?}`: launches the presenter app (or opens browser windows) |
 | GET | `/api/library` | `shared/library.json`; `?format=tldraw` gives `shared/library.tldraw.json` |
 | GET | `/models/<repo>/<file>` | a browser speech-model file from `RAZZLE_MODELS_DIR`; 404 when absent (the studio then uses the hub) |
 
@@ -68,7 +68,7 @@ Client → server
 ```ts
 { t: 'hello', role: 'editor' | 'audience' | 'speaker' | 'director' | 'cli', deckId?: string }
 { t: 'nav', action: 'next' | 'prev' | 'goto', slide?: number, step?: number, source: 'human' | 'agent' | 'cue' }
-{ t: 'mode', mode: 'idle' | 'record' | 'present', auto?: boolean, deckId?: string }
+{ t: 'mode', mode: 'idle' | 'record' | 'present', auto?: boolean, deckId?: string, workflow?: 'draft' | 'rehearse' | 'present', recording?: boolean }
 { t: 'steps', slideIndex: number, stepCount: number }            // optional: a screen's step count overrides the server's
 { t: 'request', kind: 'hidden-slide', prompt?: string }          // speaker's covert request (key `h` in speaker view)
 { t: 'highlight', slideIndex: number, elId?: string, rect?: [x, y, w, h], ms?: number }   // director → screens
@@ -120,7 +120,7 @@ send `nav` with `source: 'human'` for keyboard/clicker input.
   for the same transition the agent already made). `prev` is never dropped.
 - At most one agent/cue advance per 1500 ms.
 - Agent `next`/`prev` need `auto`; agent `goto` (showing a hidden slide the speaker asked for) does not.
-  Cues fire in record and present mode whether or not `auto` is on; a `step` cue with no steps left does nothing.
+  Cues fire only in the present workflow with `auto` on; a `step` cue with no steps left does nothing.
 
 ### Audio
 
@@ -265,3 +265,14 @@ Model (`src/model/types.ts`, `src/model/slides.ts`):
   text box with one coloured run per token. The style panel's Code section sets language, size and
   background; double-click edits the source. A PPTist-side `{type: 'code', code, language, size,
   background?}` element (`shared/tools/kit.mjs` `code()`) converts to it.
+
+## Narration workflow
+
+The Present menu starts Draft, Rehearse, Present, or Present & record in the presenter app or this browser. The studio’s Draft button records while editing. Every presentation listens for speech; only Draft, Rehearse, and Present & record retain a take. Stopping or closing the speaker view ends the take.
+
+- Draft keeps transcripts and uses Codex after stopping to refine speaker notes. Later corrections replace the corresponding passage; untouched material remains. Redo narration resets the current slide’s narration from that point. Earlier takes and note history remain on disk. A reset with no new speech leaves existing notes intact.
+- Rehearse preserves notes and records manual next-step/slide transitions with stable slide IDs, speech examples and the pause before each click. Backtracking and silent clicks do not train transitions.
+- Present uses Whisper transcripts and Jev (Haiku fallback) to judge completion against rehearsal endings. Filler or a pause alone is insufficient. Learned pauses account for transcription latency; resumed speech cancels a pending advance. Changed scripts or step counts invalidate their old examples. Without examples, script coverage remains the fallback. Manual navigation always takes priority.
+- Present & record additionally saves the live transcript. It does not rewrite notes or train transitions.
+
+POST /api/redo requires an active draft and {slideId} matching the current slide. Recording here means a saved transcript, not an audio/video file.

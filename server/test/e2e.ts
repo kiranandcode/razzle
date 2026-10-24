@@ -102,7 +102,7 @@ async function main() {
     await new Promise(r => ws.once('open', r))
     ws.on('message', d => seen.push({ at: Date.now(), msg: JSON.parse(d.toString()) }))
     ws.send(JSON.stringify({ t: 'hello', role: 'audience', deckId: 'e2e' }))
-    await api('POST', '/api/mode', { mode: 'present', deckId: 'e2e', auto: false })
+    await api('POST', '/api/mode', { mode: 'present', workflow: 'present', deckId: 'e2e', auto: true })
 
     const waitFor = async (pred: (s: Seen) => boolean, ms: number) => {
       const t = Date.now()

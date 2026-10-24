@@ -42,7 +42,8 @@ export function slideShapes(editor: Editor, frame: TLShape): TLShape[] {
 
 /** Number of build steps: step 0 plus the highest step any shape changes at. */
 export function stepCount(editor: Editor, frame: TLShape): number {
-	let max = 0
+	const explicit = slideMeta(frame).buildSteps
+	let max = explicit && Number.isInteger(explicit) && explicit > 0 ? explicit - 1 : 0
 	for (const s of slideShapes(editor, frame)) {
 		const b = (s.meta as any)?.build as BuildMeta | undefined
 		if (b && Number.isInteger(b.step) && b.step > max) max = b.step

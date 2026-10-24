@@ -18,6 +18,8 @@ export interface RazzleCue {
 
 /** `frame.meta.razzle` */
 export interface RazzleSlideMeta {
+	/** Minimum timeline length, including step 0, retaining explicitly inserted empty steps. */
+	buildSteps?: number
 	/** Skipped by next/prev; reached by an explicit jump (speaker view or agent). */
 	hidden?: boolean
 	/** What the speaker means to say, one entry per build step (index = step). */

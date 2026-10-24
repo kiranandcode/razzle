@@ -1,17 +1,19 @@
 // Inspector tab: build steps for the selected shapes, the steps of the current slide, and an
 // in-memory preview of any step (opacity applied with CSS, never written to the document).
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { TLShape, TLShapeId, TldrawUiButton, TldrawUiButtonIcon, TldrawUiButtonLabel, useEditor, useValue } from 'tldraw'
 import { buildOpacity, slideShapes, stepCount } from '../model/slides'
 import { BuildMeta } from '../model/types'
-import { EFFECT_LABEL, buildOf, describeStep, ownBuild, setBuild, shapesAtStep } from './builds'
+import { EFFECT_LABEL, buildOf, describeStep, ownBuild, setBuild, setBuildEnd, shapesAtStep } from './builds'
 import { currentSlide, slideIndexOf } from './slideOps'
 import { $inspector, $previewStep } from './state'
+import { BuildTimeline } from './BuildTimeline'
 
 const EFFECTS: BuildMeta['effect'][] = ['appear', 'fade', 'disappear']
 
 export function BuildsPanel() {
 	const editor = useEditor()
+	const [view, setView] = useState<'timeline' | 'list'>('timeline')
 	const slide = useValue('current slide', () => currentSlide(editor), [editor])
 	const steps = useValue('step count', () => (slide ? stepCount(editor, slide) : 1), [editor, slide])
 	const preview = useValue($previewStep)
@@ -36,13 +38,22 @@ export function BuildsPanel() {
 	const allSameEffect = !!first && builds.every((b) => b?.effect === first.effect)
 	const inherited = selection.length === 1 && !first ? buildOf(editor, selection[0]) : undefined
 	const maxStep = steps - 1
+	const timedBuilds = builds.filter((b): b is BuildMeta => !!b)
+	const sameEnd = timedBuilds.every((b) => b.until === timedBuilds[0]?.until)
+	const endValue = sameEnd ? String(timedBuilds[0]?.until ?? 'none') : 'mixed'
+	const firstEnd = Math.max(1, ...timedBuilds.map((b) => b.step)) + 1
+	const changeEnd = (end: number | 'next' | null) => {
+		setBuildEnd(editor, selection.map((s) => s.id), end)
+		$previewStep.set(null)
+	}
 
 	const apply = (patch: Partial<BuildMeta> | null) => {
 		editor.markHistoryStoppingPoint('set build')
 		if (patch === null) return setBuild(editor, selection.map((s) => s.id), null)
 		for (const s of selection) {
 			const b = ownBuild(s)
-			setBuild(editor, [s.id], { step: patch.step ?? b?.step ?? 1, effect: patch.effect ?? b?.effect ?? 'fade' })
+			const step = patch.step ?? b?.step ?? 1
+			setBuild(editor, [s.id], { ...b, step, effect: patch.effect ?? b?.effect ?? 'fade', ...(b?.until === undefined ? {} : { until: b.until + step - b.step }) })
 		}
 	}
 
@@ -81,6 +92,17 @@ export function BuildsPanel() {
 						<TldrawUiButtonIcon icon="chevron-right" small />
 					</TldrawUiButton>
 				</div>
+			</section>
+
+			<section className="rz-section">
+				<div className="rz-section-head">
+					<span>Builds on this slide</span>
+					<div className="rz-segments">
+						<button className="rz-seg" data-active={view === 'timeline'} onClick={() => setView('timeline')}>Timeline</button>
+						<button className="rz-seg" data-active={view === 'list'} onClick={() => setView('list')}>List</button>
+					</div>
+				</div>
+				{view === 'timeline' ? <BuildTimeline key={slide.id} slide={slide} steps={steps} /> : <StepList slide={slide} steps={steps} />}
 			</section>
 
 			<section className="rz-section">
@@ -125,6 +147,16 @@ export function BuildsPanel() {
 									{allSameEffect && first?.effect === 'appear' && 'Hidden until its step.'}
 									{allSameEffect && first?.effect === 'disappear' && 'Shown until its step, then gone.'}
 								</p>
+								<label className="rz-field-label" htmlFor="rz-build-end">End at step</label>
+								<select id="rz-build-end" className="rz-select" value={endValue} onChange={(e) => changeEnd(e.target.value === 'none' ? null : Number(e.target.value))}>
+									{!sameEnd && <option value="mixed" disabled>Mixed</option>}
+									<option value="none">No end</option>
+									{Array.from({ length: Math.max(maxStep + 1, firstEnd) - firstEnd + 1 }, (_, i) => firstEnd + i).map((k) => <option key={k} value={k}>Step {k}</option>)}
+								</select>
+								<button className="rz-seg" style={{ marginTop: 6 }} onClick={() => changeEnd('next')}>One step only</button>
+								<p className="rz-hint">
+									{allSameEffect && first?.effect === 'appear' ? 'Hidden again from the end step. Choose One step only to appear now and disappear on the next click.' : 'At the end step, the object returns to its state before this effect.'}
+								</p>
 							</>
 						)}
 						{inherited && (
@@ -136,12 +168,6 @@ export function BuildsPanel() {
 				)}
 			</section>
 
-			<section className="rz-section">
-				<div className="rz-section-head">
-					<span>Steps on this slide</span>
-				</div>
-				<StepList slide={slide} steps={steps} />
-			</section>
 		</div>
 	)
 }

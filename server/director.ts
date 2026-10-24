@@ -19,6 +19,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import WebSocket from 'ws'
 import { claudeJSON, hasClaude, hasJev, jev, noulYes, MODELS } from './llm.ts'
+import { deliveryFor, cadenceDelay } from './delivery.ts'
 import { tokens } from './cues.ts'
 import { elementText, entryLabels, expandLibraryRefs, freshIds, libraryEntries, slideText, validateSlide, type Json, type LibraryEntry } from './slides.ts'
 import { move, type PresState, type AgentStatus } from './state.ts'
@@ -75,7 +76,7 @@ function nextScript(): string | undefined {
   return to ? deck.slides[to.slideIndex]?.razzle?.script?.[to.step] : undefined
 }
 
-function keyOf(s: PresState | null) { return s ? `${s.deckId}|${s.slideIndex}|${s.step}|${s.lastNav?.at ?? 0}` : '' }
+function keyOf(s: PresState | null) { return s ? `${s.deckId}|${s.slideIndex}|${s.step}|${s.lastNav?.at ?? 0}|${s.mode}|${s.workflow}|${s.takeId}|${s.auto}` : '' }
 
 // ---------------------------------------------------------------- status (the orb)
 
@@ -199,6 +200,7 @@ function judgementContext(utterance: string) {
     .map(({ i, x }: Json) => ({ index: i, about: short(x.razzle?.generated?.prompt ?? slideText(x), 80) }))
   return {
     slide: { index: state!.slideIndex, step, steps: state!.stepCount, text: short(slideText(s), 800), script: s.razzle?.script?.[step] ?? null, elements },
+    rehearsedTransitions: deliveryFor(s, step)?.examples ?? [],
     hiddenSlides: hidden,
     heardOnThisStep: short(heard, 1500),
     latest: utterance,
@@ -209,6 +211,7 @@ async function judgeHaiku(utterance: string, wantCoverage: boolean, signal: Abor
   const ctx = judgementContext(utterance)
   const system = `You are the live director of a research talk. You read the speaker's words as they are transcribed and judge, for the latest utterance:
 1. covered: ${wantCoverage ? 'has the speaker now said the substance of the script for the current build step (judge the gist: paraphrase and different wording count; covered once the main point has been made, even if minor words differ; if the speaker has moved on to new material, it is covered)?' : 'always null'}
+When rehearsedTransitions is nonempty, covered also requires that the latest speech reaches the ending of a demonstrated transition, in meaning. Ignore filler and false starts; a thinking pause or mentioning the topic is not completion. Earlier parts of the example are context, not triggers.
 2. intent: one of ${Object.entries(INTENTS).map(([k, v]) => `"${k}" = ${v}`).join('; ')}. Use "continue" unless the latest utterance clearly signals another intent.
 3. confidence: 0..1 for the intent.
 4. highlight: if the latest utterance refers to a specific element on the slide ("this box", "the kernel here"), its id from slide.elements; else null.
@@ -246,7 +249,7 @@ async function judgeJev(utterance: string, wantCoverage: boolean, signal: AbortS
   }
   if (wantCoverage) questions.covered = {
     type: 'noul',
-    instructions: 'Has the speaker now said the substance of `slide.script` (the plan for the current build step), judging by `heardOnThisStep`? Paraphrase counts.',
+    instructions: 'Has the speaker now said the substance of `slide.script` (the plan for the current build step), judging by `heardOnThisStep` and `latest`? If rehearsedTransitions is nonempty, require reaching the ending of one of those demonstrated transitions, in meaning. Filler, false starts and thinking pauses are not completion. Paraphrase counts.',
     criteria: {
       true: 'every point of the script has been made, in any wording',
       false: 'some point of the script has not been said yet',
@@ -274,7 +277,7 @@ async function judgeJev(utterance: string, wantCoverage: boolean, signal: AbortS
 // ---------------------------------------------------------------- decisions
 
 function autoAdvanceOn(): boolean {
-  return Boolean(state?.auto && state.mode === 'present' && slide()?.razzle?.autoAdvance !== false)
+  return Boolean(state?.auto && state.mode === 'present' && (!state.workflow || state.workflow === 'present') && slide()?.razzle?.autoAdvance !== false)
 }
 
 /** Did this piece of speech begin at the position now showing? Speech that began
@@ -288,36 +291,55 @@ function atCurrent(p: { slideIndex: number, step: number }, segId: number) {
 let advancingOn: number | null = null
 let ownedFrom: number | null = null
 
+let latestSpeech = -1
+let advanceTimer: ReturnType<typeof setTimeout> | null = null
+function cancelAdvance() {
+  if (advanceTimer) clearTimeout(advanceTimer)
+  advanceTimer = null
+}
+function scheduleAdvance(segId: number, endedAt: number, why: string) {
+  cancelAdvance()
+  const key = navKey
+  const delay = cadenceDelay(deliveryFor(slide()!, state!.step), endedAt)
+  advanceTimer = setTimeout(() => {
+    advanceTimer = null
+    if (key !== navKey || !autoAdvanceOn() || latestSpeech > segId) return
+    advancingOn = segId
+    void nav('next', why)
+  }, delay)
+}
+
 // Coverage is judged only when the speaker pauses (the server closed a speech
 // segment) or a final transcript lands, so the slide never moves mid-sentence.
-async function decide(utterance: string, kind: 'pause' | 'final', segId: number) {
-  if (!state || state.mode !== 'present' || !slide()) return
+async function decide(utterance: string, kind: 'pause' | 'final', segId: number, endedAt = Date.now()) {
+  if (!state || state.mode !== 'present' || (state.workflow && state.workflow !== 'present') || !slide() || segId < latestSpeech) return
+  cancelAdvance()
   const isFinal = kind === 'final'
   const s = slide()!
   const script: string | undefined = s.razzle?.script?.[state.step]
   const said = isFinal ? heard : `${heard} ${utterance}`
   const key = navKey
+  const delivery = deliveryFor(s, state.step)
 
   // 1. coverage, local fast path; or the speaker has already started on the next position
   let wantCoverage = false
-  if (script && autoAdvanceOn()) {
-    const c = coverage(script, said)
+  if ((script || delivery) && autoAdvanceOn()) {
+    const c = script ? coverage(script, said) : 0
     const ahead = nextScript()
-    if (ahead && c >= TUNING.askModelAbove && coverage(ahead, utterance) >= TUNING.movedOn) {
+    if (!delivery && ahead && c >= TUNING.askModelAbove && coverage(ahead, utterance) >= TUNING.movedOn) {
       line(yellow('cover'), `${state.slideIndex}.${state.step} moved on ${dim(`next-script ${coverage(ahead, utterance).toFixed(2)}`)}`)
       judge?.abort()
       advancingOn = segId - 1 // this utterance belongs to the new position
       await nav('next', 'speaker moved on')
       return
     }
-    if (c >= (isFinal ? TUNING.coveredLocal : TUNING.coveredAtPause)) {
+    if (!delivery && c >= (isFinal ? TUNING.coveredLocal : TUNING.coveredAtPause)) {
       line(yellow('cover'), `${state.slideIndex}.${state.step} covered ${dim(`local ${c.toFixed(2)}`)}`)
       judge?.abort()
-      advancingOn = segId
-      await nav('next', 'script covered')
+      scheduleAdvance(segId, endedAt, 'script covered')
       return
     }
-    wantCoverage = c >= TUNING.askModelAbove
+    wantCoverage = !!delivery || c >= TUNING.askModelAbove
   }
 
   // 2-3. local highlight
@@ -346,8 +368,7 @@ async function decide(utterance: string, kind: 'pause' | 'final', segId: number)
 
   if (wantCoverage && j.covered) {
     line(yellow('cover'), `${state.slideIndex}.${state.step} covered ${dim(j.via)}`)
-    advancingOn = segId
-    await nav('next', 'script covered')
+    scheduleAdvance(segId, endedAt, delivery ? 'rehearsed transition reached' : 'script covered')
     return
   }
   if (!isFinal) return
@@ -518,6 +539,7 @@ async function onState(s: PresState) {
     advancingOn = null
     navKey = k
     heard = ''
+    cancelAdvance()
     judge?.abort()
     if (prev && (prev.slideIndex !== s.slideIndex || prev.step !== s.step)) {
       line(dim('slide'), dim(`${s.slideIndex}.${s.step}${s.lastNav ? ` by ${s.lastNav.source}` : ''}`))
@@ -531,6 +553,11 @@ function onMessage(msg: Json) {
   switch (msg.t) {
     case 'state': void onState(msg.state); break
     case 'deck-updated': if (msg.deckId === state?.deckId) void loadDeck(msg.deckId); break
+    case 'speech-start':
+      latestSpeech = Math.max(latestSpeech, msg.segId)
+      cancelAdvance()
+      judge?.abort()
+      break
     case 'transcript':
       if (msg.final) {
         const text: string = msg.final.text
@@ -538,9 +565,9 @@ function onMessage(msg: Json) {
         if (state?.mode === 'present') line(dim('heard'), dim(short(text, 90)))
         if (!atCurrent(msg.final, msg.segId ?? -1)) break
         heard = `${heard} ${text}`.trim()
-        void decide(text, 'final', msg.segId ?? -1)
+        void decide(text, 'final', msg.segId ?? -1, msg.final.t1)
       } else if (msg.pause) {
-        if (atCurrent(msg.pause, msg.segId ?? -1)) void decide(msg.pause.text ?? '', 'pause', msg.segId ?? -1)
+        if (atCurrent(msg.pause, msg.segId ?? -1)) void decide(msg.pause.text ?? '', 'pause', msg.segId ?? -1, msg.pause.t1)
       }
       break
     case 'request':
@@ -566,7 +593,7 @@ function connect() {
   })
   sock.on('message', d => { try { onMessage(JSON.parse(d.toString())) } catch (e) { line(red('error'), (e as Error).message) } })
   sock.on('close', () => {
-    if (ws === sock) { ws = null; if (connectedOnce) line(yellow('off  '), 'server connection lost, retrying') }
+    if (ws === sock) { cancelAdvance(); judge?.abort(); latestSpeech = -1; ws = null; if (connectedOnce) line(yellow('off  '), 'server connection lost, retrying') }
     setTimeout(connect, 2000)
   })
   sock.on('error', () => { if (!warned && !connectedOnce) { warned = true; line(yellow('wait '), `no server at ${BASE} yet`) } })

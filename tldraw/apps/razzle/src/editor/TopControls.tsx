@@ -23,10 +23,12 @@ import {
 } from 'tldraw'
 import { micStart, micStop, useAutoMic, useBrowserMic } from '../asr/mic'
 import { MicToggle } from '../asr/MicToggle'
+import { RedoNarration } from '../asr/RedoNarration'
 import { PUBLIC } from '../model/base'
-import { nav, setMode, useRazzle } from '../model/client'
+import { nav, setMode, useRazzle, type PresentationOptions } from '../model/client'
 import { generateNotes } from '../model/deck'
 import { SaveStatus } from '../model/persist'
+import { getSlides } from '../model/slides'
 import { useStudio } from './context'
 import { presentHere, presentWithApp, startIndex } from './presenting'
 import { shareDeck } from './sharing'
@@ -102,7 +104,13 @@ function SaveState() {
 		<span
 			className="rz-save-state"
 			data-status={status}
-			title={PUBLIC ? 'Kept in this browser only; export the deck from the main menu.' : status === 'local' ? `The server is not reachable${error ? ` (${error})` : ''}; edits are kept in this browser and sent when it is back.` : error || undefined}
+			title={
+				PUBLIC
+					? 'Kept in this browser only; export the deck from the main menu.'
+					: status === 'local'
+						? `The server is not reachable${error ? ` (${error})` : ''}; edits are kept in this browser and sent when it is back.`
+						: error || undefined
+			}
 			onClick={() => sync?.flush()}
 		>
 			{STATUS_TEXT[status]}
@@ -140,7 +148,14 @@ export function RazzleSharePanel() {
 function InspectorToggle({ tab, icon, label }: { tab: InspectorTab; icon: string; label: string }) {
 	const open = useValue('inspector', () => $inspector.get() === tab, [tab])
 	return (
-		<TldrawUiButton type="normal" className="rz-top-btn" isActive={open} data-active={open} title={`${label} panel`} onClick={() => $inspector.set(open ? null : tab)}>
+		<TldrawUiButton
+			type="normal"
+			className="rz-top-btn"
+			isActive={open}
+			data-active={open}
+			title={`${label} panel`}
+			onClick={() => $inspector.set(open ? null : tab)}
+		>
 			<TldrawUiButtonIcon icon={icon} small />
 			<TldrawUiButtonLabel>{label}</TldrawUiButtonLabel>
 		</TldrawUiButton>
@@ -160,7 +175,9 @@ function AgentDot() {
 	const agent = useRazzle((s) => s.state.agent)
 	const message = useRazzle((s) => s.state.agentMessage)
 	const status = connected ? agent : 'disconnected'
-	const title = connected ? `${AGENT_TEXT[agent] ?? agent}${message ? `: ${message}` : ''}` : 'Not connected to the Razzle server'
+	const title = connected
+		? `${AGENT_TEXT[agent] ?? agent}${message ? `: ${message}` : ''}`
+		: 'Not connected to the Razzle server'
 	return <span className="rz-agent-dot" data-status={status} title={title} aria-label={title} />
 }
 
@@ -172,7 +189,13 @@ function RecordButton() {
 	const ownsRun = useRef(false)
 	const connected = useRazzle((s) => s.connected)
 	const mode = useRazzle((s) => s.state.mode)
-	const recording = useRazzle((s) => !!s.state.takeId && s.state.deckId === deck.id)
+	const recording = useRazzle((s) => s.state.mode !== 'idle' && s.state.deckId === deck.id)
+	const workflow = useRazzle((s) => s.state.workflow)
+	const serverSlide = useRazzle((s) => s.state.slideIndex)
+	const slideId = useValue('draft slide id', () => getSlides(editor)[serverSlide]?.id, [
+		editor,
+		serverSlide,
+	])
 	const micActive = useRazzle((s) => s.state.mic.active)
 	const slide = useValue('recording slide', () => startIndex(editor), [editor])
 	useEffect(() => {
@@ -183,31 +206,51 @@ function RecordButton() {
 	const browserMic = useBrowserMic()
 	useAutoMic(mode !== 'idle', { claim: false })
 	return recording ? (
-		<TldrawUiButton type="normal" className="rz-top-btn rz-recording" disabled={stopping} title="Stop this run and update notes from what you said" onClick={async () => {
-			setStopping(true)
-			try { await micStop(); setMode('idle') } finally { setStopping(false) }
-		}}>
-			<span className="rz-rec-dot" />
-			<TldrawUiButtonLabel>{stopping ? 'Finishing…' : 'Stop & update'}</TldrawUiButtonLabel>
-		</TldrawUiButton>
+		<>
+			{workflow === 'draft' && <RedoNarration key={slideId} slideId={slideId} />}
+			<TldrawUiButton
+				type="normal"
+				className="rz-top-btn rz-recording"
+				disabled={stopping}
+				title="Stop this session and finish processing"
+				onClick={async () => {
+					setStopping(true)
+					try {
+						await micStop()
+						setMode('idle')
+					} finally {
+						setStopping(false)
+					}
+				}}
+			>
+				<span className="rz-rec-dot" />
+				<TldrawUiButtonLabel>{stopping ? 'Finishing…' : 'Stop'}</TldrawUiButtonLabel>
+			</TldrawUiButton>
+		</>
 	) : (
 		<TldrawUiButton
 			type="normal"
 			className="rz-top-btn rz-record-btn"
 			disabled={!connected}
-			title={connected ? 'Rehearse: every sentence is stored against its slide and step' : 'Needs the Razzle server'}
+			title={
+				connected
+					? 'Draft narration while editing; stopping refines your notes'
+					: 'Needs the Razzle server'
+			}
 			onClick={async () => {
 				try {
 					await sync?.flush()
 					ownsRun.current = true
-					setMode(mode === 'present' ? 'present' : 'record', false, deck.id)
+					setMode('record', false, deck.id, { workflow: 'draft' })
 					if (mode !== 'present') nav('goto', { slide: startIndex(editor), step: 0 })
 					if (browserMic && !micActive) void micStart('auto')
-				} catch (e) { toasts.addToast({ title: 'Could not record', description: String(e), severity: 'error' }) }
+				} catch (e) {
+					toasts.addToast({ title: 'Could not record', description: String(e), severity: 'error' })
+				}
 			}}
 		>
 			<TldrawUiButtonIcon icon="rz-record" small />
-			<TldrawUiButtonLabel>Record</TldrawUiButtonLabel>
+			<TldrawUiButtonLabel>Draft</TldrawUiButtonLabel>
 		</TldrawUiButton>
 	)
 }
@@ -216,7 +259,7 @@ function NotesButton() {
 	const { deck, sync } = useStudio()
 	const connected = useRazzle((s) => s.connected)
 	const [busy, setBusy] = useState(false)
-	const progress = useRazzle((s) => s.notesStatus?.deckId === deck.id ? s.notesStatus : undefined)
+	const progress = useRazzle((s) => (s.notesStatus?.deckId === deck.id ? s.notesStatus : undefined))
 	const recording = useRazzle((s) => s.state.deckId === deck.id && !!s.state.takeId)
 	const toasts = useToasts()
 	return (
@@ -231,16 +274,30 @@ function NotesButton() {
 					await sync?.flush()
 					const fresh = await generateNotes(deck.id)
 					sync?.applyServerDeck(fresh)
-					toasts.addToast({ title: 'Notes written', description: 'Scripts are in the Speech panel.', severity: 'success' })
+					toasts.addToast({
+						title: 'Notes written',
+						description: 'Scripts are in the Speech panel.',
+						severity: 'success',
+					})
 				} catch (e) {
-					toasts.addToast({ title: 'Could not write notes', description: e instanceof Error ? e.message : String(e), severity: 'error' })
+					toasts.addToast({
+						title: 'Could not write notes',
+						description: e instanceof Error ? e.message : String(e),
+						severity: 'error',
+					})
 				} finally {
 					setBusy(false)
 				}
 			}}
 		>
 			<TldrawUiButtonIcon icon="rz-notes" small />
-			<TldrawUiButtonLabel>{busy || progress?.status === 'writing' ? 'Writing…' : progress?.status === 'error' ? 'Retry notes' : 'Notes'}</TldrawUiButtonLabel>
+			<TldrawUiButtonLabel>
+				{busy || progress?.status === 'writing'
+					? 'Writing…'
+					: progress?.status === 'error'
+						? 'Retry notes'
+						: 'Notes'}
+			</TldrawUiButtonLabel>
 		</TldrawUiButton>
 	)
 }
@@ -250,38 +307,73 @@ function PresentButton() {
 	const { deck, sync } = useStudio()
 	const connected = useRazzle((s) => s.connected)
 	const toasts = useToasts()
-	const start = async () => {
+	const [browser, setBrowser] = useState(false)
+	const [busy, setBusy] = useState(false)
+	const choices: { label: string; options: PresentationOptions }[] = [
+		{ label: 'Draft · refine notes', options: { workflow: 'draft' } },
+		{ label: 'Rehearse · learn transitions', options: { workflow: 'rehearse' } },
+		{ label: 'Present', options: { workflow: 'present', recording: false } },
+		{ label: 'Present & record', options: { workflow: 'present', recording: true } },
+	]
+	const start = async (
+		options: PresentationOptions = { workflow: 'present', recording: false }
+	) => {
+		setBusy(true)
 		try {
 			await sync?.flush()
-			await presentWithApp(editor, deck.id)
+			if (browser) presentHere(editor, deck.id, 'current', options)
+			else await presentWithApp(editor, deck.id, 'current', options)
 		} catch (e) {
-			toasts.addToast({ title: 'Could not present', description: e instanceof Error ? e.message : String(e), severity: 'error' })
+			toasts.addToast({ title: 'Could not present', description: String(e), severity: 'error' })
+		} finally {
+			setBusy(false)
 		}
 	}
 	return (
 		<div className="rz-split">
-			<TldrawUiButton type="primary" className="rz-top-btn rz-split-main" disabled={!connected} title="Present with the presenter app, from this slide" onClick={start}>
+			<TldrawUiButton
+				type="primary"
+				className="rz-top-btn rz-split-main"
+				disabled={!connected || busy}
+				title="Present from this slide; use the menu to draft or rehearse"
+				onClick={() => start()}
+			>
 				<TldrawUiButtonIcon icon="rz-play" small />
 				<TldrawUiButtonLabel>Present</TldrawUiButtonLabel>
 			</TldrawUiButton>
 			<TldrawUiDropdownMenuRoot id="razzle-present">
 				<TldrawUiDropdownMenuTrigger>
-					<TldrawUiButton type="primary" className="rz-top-btn rz-split-more" title="More ways to present">
+					<TldrawUiButton
+						type="primary"
+						className="rz-top-btn rz-split-more"
+						title="Draft, rehearse or present"
+					>
 						<TldrawUiButtonIcon icon="chevron-down" small />
 					</TldrawUiButton>
 				</TldrawUiDropdownMenuTrigger>
 				<TldrawUiDropdownMenuContent side="bottom" align="end" alignOffset={0} sideOffset={6}>
 					<TldrawUiMenuContextProvider type="menu" sourceId="menu">
-						<TldrawUiMenuGroup id="present">
-							<TldrawUiMenuItem id="present-app" label="With the presenter app" icon="rz-present" disabled={!connected} onSelect={start} />
+						<TldrawUiMenuGroup id="workflow">
+							{choices.map(({ label, options }) => (
+								<TldrawUiMenuItem
+									key={label}
+									id={label}
+									label={label}
+									disabled={!connected || busy}
+									onSelect={() => start(options)}
+								/>
+							))}
+						</TldrawUiMenuGroup>
+						<TldrawUiMenuGroup id="screen">
 							<TldrawUiMenuItem
-								id="present-here"
-								label="In this browser"
-								icon="external-link"
-								onSelect={async () => {
-									await sync?.flush()
-									presentHere(editor, deck.id)
-								}}
+								id="presenter-app"
+								label={browser ? 'Use presenter app' : 'Presenter app ✓'}
+								onSelect={() => setBrowser(false)}
+							/>
+							<TldrawUiMenuItem
+								id="presenter-browser"
+								label={browser ? 'This browser ✓' : 'Use this browser'}
+								onSelect={() => setBrowser(true)}
 							/>
 						</TldrawUiMenuGroup>
 					</TldrawUiMenuContextProvider>
@@ -305,7 +397,9 @@ function ShareButton() {
 			title="Copy a link that carries the whole deck: anyone with it can view the talk"
 			onClick={async () => {
 				setBusy(true)
-				await shareDeck(editor, deck, sync?.$title.get() ?? deck.title, sync?.flush, (t) => toasts.addToast(t))
+				await shareDeck(editor, deck, sync?.$title.get() ?? deck.title, sync?.flush, (t) =>
+					toasts.addToast(t)
+				)
 				setBusy(false)
 			}}
 		>
