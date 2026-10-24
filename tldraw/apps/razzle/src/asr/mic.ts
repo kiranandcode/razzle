@@ -6,7 +6,7 @@ import { useEffect, useSyncExternalStore } from 'react'
 import { PUBLIC } from '../model/base'
 import { useRazzle } from '../model/client'
 
-export type MicStatus = 'off' | 'loading' | 'listening' | 'error'
+export type MicStatus = 'off' | 'loading' | 'waiting' | 'listening' | 'error'
 
 export interface MicView {
 	status: MicStatus
@@ -61,7 +61,7 @@ let userOff = false
 export async function micStart(how: 'user' | 'auto' = 'user') {
 	if (PUBLIC) return
 	if (how === 'user') userOff = false
-	if (view.status === 'listening' || view.status === 'loading') return
+	if (view.status === 'listening' || view.status === 'loading' || view.status === 'waiting') return
 	auto = how === 'auto'
 	setMicView({ status: 'loading', message: '', progress: null })
 	try {
@@ -80,6 +80,7 @@ export async function micStop(how: 'user' | 'auto' = 'user') {
 }
 
 export function micToggle() {
+	if (view.status === 'waiting') return loadEngine().then((e) => e.resume())
 	return view.status === 'listening' || view.status === 'loading' ? micStop('user') : micStart('user')
 }
 
@@ -88,6 +89,9 @@ export function micToggle() {
  *  ends, release a mic that was taken automatically. */
 export function useAutoMic(active: boolean, { claim }: { claim: boolean }) {
 	const browser = useBrowserMic()
+	useEffect(() => {
+		if (browser) void loadEngine().then((e) => e.warmup()).catch(() => {})
+	}, [browser])
 	useEffect(() => {
 		if (!browser) return
 		if (active) {

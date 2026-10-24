@@ -29,7 +29,9 @@ cd ../presenter && ./build.sh              # Razzle Presenter.app
 
 Requirements: Node ≥ 23, `ffmpeg`, `whisper-server` (whisper.cpp) with the models named in
 `docs/DESIGN.md` (not needed with `RAZZLE_AUDIO=browser`; run `server/fetch-models.sh` for the
-browser's models instead), and `ANTHROPIC_API_KEY`. `TYPESAFE_API_KEY` is optional; it enables Jev.
+browser's models instead), and a signed-in Codex CLI for rehearsal notes (`codex login` as the
+server user; `RAZZLE_CODEX_BIN` can select its executable). The director uses Claude.
+`TYPESAFE_API_KEY` is optional; it enables Jev.
 Without a tldraw licence key, tldraw shows a small "Get a license for production" mark.
 
 ## Use
@@ -38,11 +40,18 @@ Without a tldraw licence key, tldraw shows a small "Get a license for production
 bin/razzle open demo          # studio on the Cove board (or --no-cove)
 bin/razzle record demo        # rehearse: what you say is stored per slide and step
 bin/razzle stop
-bin/razzle notes demo         # speaker notes + per-step script from the rehearsal
+bin/razzle notes demo         # retry/update notes with Codex from finished rehearsals
 bin/razzle present demo       # present
 bin/razzle director           # the live agent, in its own termling
 bin/razzle slide add demo < slide.json   # append a slide (how agents author)
 ```
+
+Both Record and Present save speech against each slide and build step. **Stop & update**
+finishes the run and asks Codex to update notes. The first run replaces draft notes with your
+words; later runs refine them, keeping untouched slides and steps. Manual notes edits are kept.
+Edit notes in the studio's Speech panel or the speaker view's notes field. The speaker view
+keeps unsaved drafts when you change slides; click **Save notes** to apply them.
+Recordings and prior notes are retained if generation fails. Use **Retry notes** to try again.
 
 Studio development: `cd tldraw/apps/razzle && npx vite` (port 5174, proxied to the server) with
 `bin/razzle serve`. Types: `../../node_modules/.bin/tsc -b`.

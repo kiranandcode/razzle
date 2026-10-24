@@ -538,6 +538,21 @@
 	padding-right: 4px;
 	user-select: text;
 }
+
+.rz-notes-edit {
+	flex: 1;
+	min-height: 90px;
+	width: 100%;
+	resize: vertical;
+	box-sizing: border-box;
+	background: transparent;
+	color: inherit;
+	border: 1px solid #7775;
+	border-radius: 4px;
+	padding: 8px;
+	font: inherit;
+	line-height: 1.5;
+}
 .rz-notes-body.rz-empty {
 	color: var(--rz-faint);
 }

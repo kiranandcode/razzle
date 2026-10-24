@@ -14,7 +14,10 @@ export class StaleDeckError extends Error {}
 
 async function json<T>(res: Response): Promise<T> {
 	if (res.status === 409) throw new StaleDeckError('deck changed on the server')
-	if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+	if (!res.ok) {
+		const body = await res.json().catch(() => null)
+		throw new Error(body?.error || `${res.status} ${res.statusText}`)
+	}
 	return res.json() as Promise<T>
 }
 
@@ -35,6 +38,10 @@ export const saveDeck = (deck: Deck) =>
 		body: JSON.stringify(deck),
 	}).then((r) => json<{ ok: boolean; updatedAt: number }>(r))
 export const generateNotes = (id: string) => api(`${deckPath(id)}/notes`, { method: 'POST' }).then((r) => json<Deck>(r))
+export const saveSpeakerNotes = (id: string, slideId: string, notes: string, expectedNotes: string) =>
+	api(`${deckPath(id)}/speech`, {
+		method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slideId, notes, expectedNotes }),
+	}).then((r) => json<Deck>(r))
 export const present = (deckId: string, slide?: number) =>
 	api('/present', {
 		method: 'POST',

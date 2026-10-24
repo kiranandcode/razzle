@@ -54,6 +54,7 @@ export type ServerMessage =
 	| { t: 'hidden-ready'; slideIndex: number; prompt: string }
 	| { t: 'cue-fired'; id: string; phrase: string }
 	| { t: 'mic'; held: boolean; message?: string }
+	| { t: 'notes-status'; deckId: string; status: 'writing' | 'saved' | 'error'; message: string }
 	| { t: 'error'; message: string }
 
 export interface RazzleSnapshot {
@@ -61,6 +62,7 @@ export interface RazzleSnapshot {
 	state: PresState
 	partial: string
 	finals: Utterance[]
+	notesStatus?: Extract<ServerMessage, { t: 'notes-status' }>
 }
 
 let snap: RazzleSnapshot = {
@@ -113,6 +115,9 @@ const dispatch = (msg: ServerMessage) => {
 			break
 		case 'agent':
 			update({ state: { ...snap.state, agent: msg.status, agentMessage: msg.message ?? '' } })
+			break
+		case 'notes-status':
+			update({ notesStatus: msg })
 			break
 		case 'transcript':
 			if (msg.final) update({ finals: [...snap.finals, msg.final].slice(-200), partial: '' })

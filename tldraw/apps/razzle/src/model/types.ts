@@ -29,6 +29,8 @@ export interface RazzleSlideMeta {
 	generated?: { by: string; prompt: string; at: number }
 	/** Speaker notes (HTML). */
 	notes?: string
+	notesEditedAt?: number
+	rehearsal?: { takeIds: string[]; updatedAt: number }
 }
 
 /**

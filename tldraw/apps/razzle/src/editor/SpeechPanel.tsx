@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { TLFrameShape, TldrawUiButton, TldrawUiButtonIcon, TldrawUiButtonLabel, uniqueId, useEditor, useValue } from 'tldraw'
 import { slideMeta, stepCount } from '../model/slides'
 import { RazzleCue } from '../model/types'
+import { notesHtml, notesText } from '../model/noteText'
 import { describeStep } from './builds'
 import { currentSlide, slideIndexOf, updateSlideMeta } from './slideOps'
 
@@ -119,6 +120,11 @@ export function SpeechPanel() {
 						<div className="rz-generated-prompt">{meta.generated.prompt}</div>
 					</div>
 				)}
+			</section>
+
+			<section className="rz-section">
+				<div className="rz-section-head"><span>Speaker notes</span></div>
+				<TextArea key={slide.id} value={notesText(meta.notes ?? '')} onCommit={(text) => update({ notes: notesHtml(text), notesEditedAt: Date.now() }, 'edit notes')} placeholder="What you want to say on this slide" rows={4} />
 			</section>
 
 			<section className="rz-section">

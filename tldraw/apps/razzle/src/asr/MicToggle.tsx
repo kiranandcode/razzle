@@ -7,6 +7,7 @@ import { micToggle, useBrowserMic, useMic, type MicView } from './mic'
 function label(v: MicView, elsewhere: boolean) {
 	if (v.status === 'loading') return v.progress !== null ? `Loading ${Math.round(v.progress * 100)}%` : 'Starting…'
 	if (v.status === 'listening') return 'Mic on'
+	if (v.status === 'waiting') return 'Start audio'
 	if (v.status === 'error') return 'Mic error'
 	return elsewhere ? 'Mic elsewhere' : 'Mic off'
 }
@@ -14,7 +15,7 @@ function label(v: MicView, elsewhere: boolean) {
 function title(v: MicView, elsewhere: boolean) {
 	const parts: string[] = []
 	if (v.status === 'off') parts.push(elsewhere ? 'Another screen is listening. Click to listen here instead.' : 'Listen with this browser’s microphone (transcribed in the browser).')
-	if (v.status === 'loading') parts.push('Loading the speech model (once; it is cached afterwards).')
+	if (v.status === 'loading') parts.push('Preparing transcription. Speech is captured once the mic is allowed.')
 	if (v.status === 'listening') {
 		parts.push(`Listening: ${v.model || 'Whisper'} on ${v.device === 'webgpu' ? 'the GPU (WebGPU)' : 'the CPU (WebAssembly)'}, in this browser. Click to stop.`)
 		if (v.partialMs !== null) parts.push(`Last partial ${v.partialMs} ms, last pause ${v.pauseMs ?? '–'} ms.`)
@@ -50,7 +51,7 @@ export function MicToggle({ variant }: { variant: 'speaker' | 'studio' }) {
 					</span>
 				)}
 			</button>
-			{v.message && (v.status === 'error' || variant === 'speaker') && <span className="rz-mic-msg">{v.message}</span>}
+			{v.message && (v.status === 'error' || v.status === 'waiting' || variant === 'speaker') && <span className="rz-mic-msg">{v.message}</span>}
 		</span>
 	)
 }

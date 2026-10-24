@@ -21,14 +21,14 @@ import {
 	useToasts,
 	useValue,
 } from 'tldraw'
-import { micStart, useAutoMic, useBrowserMic } from '../asr/mic'
+import { micStart, micStop, useAutoMic, useBrowserMic } from '../asr/mic'
 import { MicToggle } from '../asr/MicToggle'
 import { PUBLIC } from '../model/base'
-import { setMode, useRazzle } from '../model/client'
+import { nav, setMode, useRazzle } from '../model/client'
 import { generateNotes } from '../model/deck'
 import { SaveStatus } from '../model/persist'
 import { useStudio } from './context'
-import { presentHere, presentWithApp } from './presenting'
+import { presentHere, presentWithApp, startIndex } from './presenting'
 import { shareDeck } from './sharing'
 import { $inspector, InspectorTab } from './state'
 
@@ -165,27 +165,45 @@ function AgentDot() {
 }
 
 function RecordButton() {
-	const { deck } = useStudio()
+	const { deck, sync } = useStudio()
+	const editor = useEditor()
+	const toasts = useToasts()
+	const [stopping, setStopping] = useState(false)
+	const ownsRun = useRef(false)
 	const connected = useRazzle((s) => s.connected)
 	const mode = useRazzle((s) => s.state.mode)
-	const recording = mode === 'record'
+	const recording = useRazzle((s) => !!s.state.takeId && s.state.deckId === deck.id)
+	const micActive = useRazzle((s) => s.state.mic.active)
+	const slide = useValue('recording slide', () => startIndex(editor), [editor])
+	useEffect(() => {
+		if (mode === 'idle') ownsRun.current = false
+		if (ownsRun.current && recording && mode === 'record') nav('goto', { slide, step: 0 })
+	}, [recording, mode, slide])
 	// browser mic (RAZZLE_AUDIO=browser): Record takes the mic, and lets it go when recording stops
 	const browserMic = useBrowserMic()
-	useAutoMic(recording, { claim: false })
+	useAutoMic(mode !== 'idle', { claim: false })
 	return recording ? (
-		<TldrawUiButton type="normal" className="rz-top-btn rz-recording" title="Stop recording" onClick={() => setMode('idle')}>
+		<TldrawUiButton type="normal" className="rz-top-btn rz-recording" disabled={stopping} title="Stop this run and update notes from what you said" onClick={async () => {
+			setStopping(true)
+			try { await micStop(); setMode('idle') } finally { setStopping(false) }
+		}}>
 			<span className="rz-rec-dot" />
-			<TldrawUiButtonLabel>Stop</TldrawUiButtonLabel>
+			<TldrawUiButtonLabel>{stopping ? 'Finishing…' : 'Stop & update'}</TldrawUiButtonLabel>
 		</TldrawUiButton>
 	) : (
 		<TldrawUiButton
 			type="normal"
 			className="rz-top-btn rz-record-btn"
-			disabled={!connected || mode === 'present'}
+			disabled={!connected}
 			title={connected ? 'Rehearse: every sentence is stored against its slide and step' : 'Needs the Razzle server'}
-			onClick={() => {
-				setMode('record', false, deck.id)
-				if (browserMic) void micStart('auto')
+			onClick={async () => {
+				try {
+					await sync?.flush()
+					ownsRun.current = true
+					setMode(mode === 'present' ? 'present' : 'record', false, deck.id)
+					if (mode !== 'present') nav('goto', { slide: startIndex(editor), step: 0 })
+					if (browserMic && !micActive) void micStart('auto')
+				} catch (e) { toasts.addToast({ title: 'Could not record', description: String(e), severity: 'error' }) }
 			}}
 		>
 			<TldrawUiButtonIcon icon="rz-record" small />
@@ -198,13 +216,15 @@ function NotesButton() {
 	const { deck, sync } = useStudio()
 	const connected = useRazzle((s) => s.connected)
 	const [busy, setBusy] = useState(false)
+	const progress = useRazzle((s) => s.notesStatus?.deckId === deck.id ? s.notesStatus : undefined)
+	const recording = useRazzle((s) => s.state.deckId === deck.id && !!s.state.takeId)
 	const toasts = useToasts()
 	return (
 		<TldrawUiButton
 			type="normal"
 			className="rz-top-btn"
-			disabled={!connected || busy}
-			title="Write speaker notes and per-step scripts from your recorded takes"
+			disabled={!connected || busy || progress?.status === 'writing' || recording}
+			title={progress?.message || 'Update notes from finished practice runs with Codex'}
 			onClick={async () => {
 				setBusy(true)
 				try {
@@ -220,7 +240,7 @@ function NotesButton() {
 			}}
 		>
 			<TldrawUiButtonIcon icon="rz-notes" small />
-			<TldrawUiButtonLabel>{busy ? 'Writing…' : 'Notes'}</TldrawUiButtonLabel>
+			<TldrawUiButtonLabel>{busy || progress?.status === 'writing' ? 'Writing…' : progress?.status === 'error' ? 'Retry notes' : 'Notes'}</TldrawUiButtonLabel>
 		</TldrawUiButton>
 	)
 }

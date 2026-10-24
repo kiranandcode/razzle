@@ -2,7 +2,7 @@
 // for this step, notes, transcript, cues, timer, orb and the hidden slides.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor } from 'tldraw'
-import { useAutoMic } from '../asr/mic'
+import { micStop, useAutoMic } from '../asr/mic'
 import { MicToggle } from '../asr/MicToggle'
 import { PUBLIC } from '../model/base'
 import { nav, on, requestHidden, setBlack, setMode, useRazzle } from '../model/client'
@@ -14,6 +14,7 @@ import { Orb } from './Orb'
 import { firstPos, lastPos, type SlideInfo } from './slideInfo'
 import { Stage, type FitRect } from './Stage'
 import { clickNav, useKeys } from './useKeys'
+import { SpeakerNotes } from './SpeakerNotes'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const MODE_LABEL = { idle: 'Idle', record: 'Recording', present: 'Presenting' } as const
@@ -57,8 +58,10 @@ export function Speaker({
 	const [editor, setEditor] = useState<Editor | null>(null)
 	const [fit, setFit] = useState<FitRect | null>(null)
 	const [helpOpen, setHelpOpen] = useState(false)
+	const [stopping, setStopping] = useState(false)
+	const notesStatus = useRazzle((s) => s.notesStatus?.deckId === deck?.id ? s.notesStatus : undefined)
 	// browser mic (RAZZLE_AUDIO=browser): the speaker view listens while a talk is presented
-	useAutoMic(state.mode === 'present', { claim: true })
+	useAutoMic(state.mode !== 'idle', { claim: true })
 
 	const slide = slides[state.slideIndex] as SlideInfo | undefined
 	const stepCount = state.stepCount || slide?.stepCount || 1
@@ -187,6 +190,11 @@ export function Speaker({
 							Auto {state.auto ? 'on' : 'off'}
 						</button>
 					)}
+					{!PUBLIC && state.mode !== 'idle' && <button className="rz-auto" disabled={stopping} onClick={async () => {
+						setStopping(true)
+						try { await micStop(); setMode('idle') } finally { setStopping(false) }
+					}}>{stopping ? 'Finishing…' : 'Stop & update notes'}</button>}
+					{notesStatus && <span role="status" title={notesStatus.message}>{notesStatus.message}</span>}
 					{state.black && (
 						<span className="rz-tag rz-black-tag" title="b to restore">
 							Audience black
@@ -264,14 +272,14 @@ export function Speaker({
 						</div>
 					)}
 
-					<div className="rz-panel rz-notes">
+					{!PUBLIC && deck && slide ? <SpeakerNotes key={`${deck.id}:${slide.id}`} deckId={deck.id} slideId={slide.id} html={slide.meta.notes ?? ''} /> : <div className="rz-panel rz-notes">
 						<div className="rz-label">Notes</div>
 						{notes ? (
 							<div className="rz-notes-body" dangerouslySetInnerHTML={{ __html: notes }} />
 						) : (
 							<div className="rz-notes-body rz-empty">No notes.</div>
 						)}
-					</div>
+					</div>}
 
 					<div className="rz-panel rz-hidden">
 						<div className="rz-label">

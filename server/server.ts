@@ -26,8 +26,9 @@ import {
   applyNav, initialState, newClock, stepCountOf,
   type Mode, type NavRequest, type PresState, type AgentStatus, type NavSource,
 } from './state.ts'
-import { claudeJSON, hasClaude, MODELS } from './llm.ts'
-import { escapeHtml, expandLibraryRefs, libraryEntries, slideText, validateSlide, newId, type Json } from './slides.ts'
+import { codexJSON } from './codex.ts'
+import { noteItems, notePatches, noteBaseline, NOTES_PROMPT, NOTES_SCHEMA, type Utterance, type Take } from './notes.ts'
+import { escapeHtml, expandLibraryRefs, libraryEntries, validateSlide, newId, type Json } from './slides.ts'
 import { appendSlide, insertSlide, isDeckV2, refreshSlides, updateSlideMeta } from '../shared/tl/convert.ts'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -49,8 +50,6 @@ function log(...a: unknown[]) {
 // ---------------------------------------------------------------- storage
 
 type Deck = Json & { id: string, title: string, slides: Json[], updatedAt?: number }
-interface Utterance { text: string, t0: number, t1: number, slideId: string, slideIndex: number, step: number }
-interface Take { id: string, deckId: string, startedAt: number, endedAt?: number, utterances: Utterance[] }
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/
 const validId = (id: string) => ID_RE.test(id) && !id.includes('..')
@@ -110,6 +109,15 @@ let deck: Deck | null = null // the deck being presented/recorded (state.deckId)
 const audio = new AudioPipeline()
 let audioStartedAt: number | null = null
 const openTakes = new Map<string, Take>()
+const takeWrites = new Map<string, Promise<void>>()
+function saveTake(take: Take) {
+  const snapshot = structuredClone(take)
+  const pending = (takeWrites.get(take.id) ?? Promise.resolve()).catch(() => {}).then(() =>
+    writeAtomic(path.join(takeDir(take.deckId), `${take.id}.json`), snapshot))
+  takeWrites.set(take.id, pending)
+  void pending.finally(() => { if (takeWrites.get(take.id) === pending) takeWrites.delete(take.id) }).catch(() => {})
+  return pending
+}
 const segInfo = new Map<number, { slideId: string, slideIndex: number, step: number, takeId: string | null }>()
 
 interface Client { ws: WebSocket, role: string, deckId?: string }
@@ -166,20 +174,21 @@ function nav(req: NavRequest): { accepted: boolean, reason?: string } {
 }
 
 async function setMode(mode: Mode, opts: { auto?: boolean, deckId?: string } = {}) {
+  const changingDeck = !!opts.deckId && opts.deckId !== state.deckId
+  if (state.takeId && (mode === 'idle' || changingDeck)) closeTake()
   if (opts.deckId && opts.deckId !== state.deckId) await setDeck(opts.deckId)
   if (typeof opts.auto === 'boolean') state = { ...state, auto: opts.auto }
   const prev = state.mode
   if (mode !== 'idle' && !deck) throw new Error('no deck selected (pass deckId)')
-  if (prev === 'record' && mode !== 'record') closeTake()
   state = { ...state, mode }
-  if (mode === 'record' && prev !== 'record') {
+  if (mode !== 'idle' && (prev === 'idle' || changingDeck || !state.takeId)) {
     const take: Take = { id: `${new Date().toISOString().replace(/[:.]/g, '-')}-${newId(4)}`, deckId: deck!.id, startedAt: Date.now(), utterances: [] }
     openTakes.set(take.id, take)
     state = { ...state, takeId: take.id }
-    await writeAtomic(path.join(takeDir(deck!.id), `${take.id}.json`), take)
+    await saveTake(take)
     log(`record: take ${take.id}`)
   }
-  if (mode !== 'record') state = { ...state, takeId: null }
+  if (mode === 'idle') state = { ...state, takeId: null }
   broadcastState()
   if (AUDIO_SOURCE !== 'local') return
   if (mode === 'idle') { if (audio.running) audio.stop() }
@@ -188,7 +197,7 @@ async function setMode(mode: Mode, opts: { auto?: boolean, deckId?: string } = {
 
 /** Resolves once no segment begun during `takeId` is waiting for its final (browser mode:
  *  the mic holder closes its open segment when recording stops), or after `ms`. */
-function segmentsDone(takeId: string, ms = 10000): Promise<void> {
+function segmentsDone(takeId: string, ms = 120000): Promise<void> {
   const t = Date.now()
   return new Promise(res => {
     const tick = () => {
@@ -208,9 +217,13 @@ function closeTake() {
   if (AUDIO_SOURCE === 'local') { audio.stop(); drained = audio.drain() } else drained = segmentsDone(take.id)
   drained.then(async () => {
     take.endedAt = Date.now()
-    await writeAtomic(path.join(takeDir(take.deckId), `${take.id}.json`), take)
+    await saveTake(take)
     openTakes.delete(take.id)
     log(`record: take ${take.id} closed, ${take.utterances.length} utterances`)
+    if (take.utterances.length) void generateNotes(take.deckId).catch(e => log('notes:', e.message))
+  }).catch(e => {
+    log('take close failed:', e.message)
+    broadcast({ t: 'error', message: `Could not save recording: ${e.message}` })
   })
 }
 
@@ -270,7 +283,7 @@ function ingest(ev: AsrEvent) {
       const take = info?.takeId ? openTakes.get(info.takeId) : null
       if (take) {
         take.utterances.push(u)
-        writeAtomic(path.join(takeDir(take.deckId), `${take.id}.json`), take).catch(e => log('take write failed:', e.message))
+        saveTake(take).catch(e => log('take write failed:', e.message))
       }
       break
     }
@@ -391,76 +404,62 @@ async function addSlide(id: string, raw: unknown, opts: { hidden: boolean }): Pr
 
 // ---------------------------------------------------------------- notes
 
-const NOTES_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['slides'],
-  properties: {
-    slides: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['id', 'notes', 'script'],
-        properties: {
-          id: { type: 'string' },
-          notes: { type: 'array', items: { type: 'string' } },
-          script: { type: 'array', items: { type: 'string' } },
-        },
-      },
-    },
-  },
+const noteJobs = new Map<string, Promise<Deck>>()
+const noteStatus = new Map<string, { t: 'notes-status', deckId: string, status: 'writing' | 'saved' | 'error', message: string }>()
+function publishNotes(id: string, status: 'writing' | 'saved' | 'error', message: string) {
+  const event = { t: 'notes-status' as const, deckId: id, status, message }
+  noteStatus.set(id, event)
+  broadcast(event)
 }
 
-async function generateNotes(id: string): Promise<Deck> {
+function generateNotes(id: string): Promise<Deck> {
+  const previous = noteJobs.get(id) ?? Promise.resolve()
+  const job = previous.catch(() => {}).then(async () => {
+    publishNotes(id, 'writing', 'Updating notes from your rehearsal…')
+    try {
+      const result = await writeNotes(id)
+      publishNotes(id, 'saved', 'Notes updated')
+      return result
+    } catch (e) {
+      publishNotes(id, 'error', 'Recording saved. Notes failed: ' + (e as Error).message)
+      throw e
+    }
+  })
+  noteJobs.set(id, job)
+  void job.finally(() => { if (noteJobs.get(id) === job) noteJobs.delete(id) }).catch(() => {})
+  return job
+}
+
+async function writeNotes(id: string): Promise<Deck> {
   const d = await readDeck(id)
   if (!d) throw new Error('no such deck')
   const takes = await listTakes(id)
-  // per slide, the most recent take that has speech on it wins
-  const bySlide = new Map<string, Utterance[]>()
-  for (const take of takes) {
-    const seen = new Map<string, Utterance[]>()
-    for (const u of take.utterances) {
-      if (!seen.has(u.slideId)) seen.set(u.slideId, [])
-      seen.get(u.slideId)!.push(u)
-    }
-    for (const [sid, us] of seen) bySlide.set(sid, us)
+  const items = noteItems(d.slides, takes)
+  if (!items.length) {
+    if (!takes.some(t => t.endedAt && t.utterances.length)) throw new Error('No finished recording yet. Stop the run first.')
+    return d
   }
-  const items = d.slides.map((s, i) => {
-    const steps = stepCountOf(s as any)
-    const us = bySlide.get(s.id) ?? []
-    const perStep = Array.from({ length: steps }, (_, k) => us.filter(u => Math.min(u.step, steps - 1) === k).map(u => u.text).join(' '))
-    return { index: i, id: s.id, hidden: Boolean(s.razzle?.hidden), steps, slideText: slideText(s).slice(0, 1500), spoken: perStep }
-  }).filter(x => x.spoken.some(Boolean))
-  if (!items.length) throw new Error('no recorded speech for this deck (record a take first)')
-  if (!hasClaude()) throw new Error('ANTHROPIC_API_KEY is not set')
-  const system = `You turn a researcher's spoken rehearsal of a talk into speaker notes and a per-build-step script.
-Rules:
-- Keep the speaker's own words and phrasing. Do not rewrite her voice into formal prose.
-- Condense: prompts, not paragraphs. Each script entry is 1-3 short lines she can glance at: the key phrases she said, in her wording, in her order.
-- notes: 1-4 short paragraphs per slide (each a single string) capturing the points she made on that slide, again in her words. Drop filler (um, so, you know), false starts and repeats.
-- script must have exactly "steps" entries for each slide (index = build step). If nothing was said at a step, use "".
-- Return JSON: {"slides":[{"id","notes":[...],"script":[...]}]} covering every slide given, nothing else.`
-  const user = `Deck: ${d.title}\n\n` + JSON.stringify(items, null, 1)
-  const out = await claudeJSON<{ slides: { id: string, notes: string[], script: string[] }[] }>({
-    model: MODELS.sonnet, system, user, schema: NOTES_SCHEMA, maxTokens: 16000, stream: true,
-  })
+  const out = await codexJSON(NOTES_PROMPT + '\nDeck: ' + d.title + '\n' + JSON.stringify(items.map(({ baseline, takeIds, ...item }) => item)), NOTES_SCHEMA)
+  const patches = notePatches(items, out)
   return withDeckLock(id, async () => {
-    const fresh = (await readDeck(id)) ?? d
-    for (const r of out.slides ?? []) {
-      const s = fresh.slides.find(x => x.id === r.id)
-      if (!s) continue
-      const steps = stepCountOf(s as any)
-      const script = Array.from({ length: steps }, (_, k) => String(r.script?.[k] ?? ''))
-      const notes = (r.notes ?? []).filter(Boolean).map(p => `<p>${escapeHtml(String(p))}</p>`).join('')
-      if (isDeckV2(fresh)) updateSlideMeta(fresh, s.id, { script, notes }) // the frame's meta.razzle is the source of truth
-      else {
-        s.remark = notes
-        s.razzle = { ...(s.razzle ?? {}), script }
-      }
+    const fresh = await readDeck(id)
+    if (!fresh) throw new Error('deck was removed')
+    // Typing in the speaker view while Codex runs must never be overwritten by its older snapshot.
+    for (const item of items) {
+      const s = fresh.slides.find(x => x.id === item.id)
+      if (s && noteBaseline(s) !== item.baseline) throw new Error('Notes were edited while Codex was working. Your edits are kept; retry Notes to merge them.')
+    }
+    await writeAtomic(path.join(DECKS, id, 'notes-history', Date.now() + '-' + newId(4) + '.json'), {
+      at: Date.now(), slides: fresh.slides.filter(s => patches.has(s.id)).map(s => ({ id: s.id, razzle: s.razzle, remark: s.remark })),
+    })
+    for (const s of fresh.slides) {
+      const patch = patches.get(s.id)
+      if (!patch) continue
+      if (isDeckV2(fresh)) updateSlideMeta(fresh, s.id, patch)
+      else { s.remark = patch.notes; s.razzle = { ...(s.razzle ?? {}), ...patch } }
     }
     if (isDeckV2(fresh)) fresh.slides = refreshSlides(fresh)
-    fresh.updatedAt = Date.now()
+    fresh.updatedAt = Math.max(Date.now(), (fresh.updatedAt ?? 0) + 1)
     await writeAtomic(deckFile(id), fresh)
     if (deck?.id === id) { deck = fresh; refreshFromDeck() }
     broadcast({ t: 'deck-updated', deckId: id, updatedAt: fresh.updatedAt })
@@ -569,7 +568,7 @@ async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse) 
 async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
   const p = url.pathname.replace(/\/+$/, '')
   const m = req.method ?? 'GET'
-  const deckMatch = p.match(/^\/api\/decks\/([^/]+)(?:\/(takes|notes|slides))?$/)
+  const deckMatch = p.match(/^\/api\/decks\/([^/]+)(?:\/(takes|notes|slides|speech))?$/)
 
   if (p === '/api/decks' && m === 'GET') return json(res, 200, await listDecks())
   if (deckMatch) {
@@ -604,6 +603,27 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
       return r.ok ? json(res, 200, r) : json(res, 400, { error: r.error })
     }
     if (sub === 'takes' && m === 'GET') return json(res, 200, await listTakes(id))
+    if (sub === 'speech' && m === 'PATCH') {
+      const b = await body(req)
+      if (typeof b.slideId !== 'string' || typeof b.notes !== 'string' || typeof b.expectedNotes !== 'string' || b.notes.length > 100000) {
+        return json(res, 400, { error: 'slideId, notes and expectedNotes are required' })
+      }
+      const result = await withDeckLock(id, async () => {
+        const d = await readDeck(id)
+        const s = d?.slides.find(s => s.id === b.slideId)
+        if (!d || !s) return { code: 404, body: { error: 'no such slide' } }
+        if ((s.razzle?.notes ?? s.remark ?? '') !== b.expectedNotes) return { code: 409, body: { error: 'Notes changed elsewhere. Your draft is kept; reload the notes before saving.' } }
+        const patch = { notes: b.notes, notesEditedAt: Date.now() }
+        if (isDeckV2(d)) { updateSlideMeta(d, s.id, patch); d.slides = refreshSlides(d) }
+        else { s.remark = b.notes; s.razzle = { ...(s.razzle ?? {}), ...patch } }
+        d.updatedAt = Math.max(Date.now(), (d.updatedAt ?? 0) + 1)
+        await writeAtomic(deckFile(id), d)
+        if (deck?.id === id) { deck = d; refreshFromDeck() }
+        broadcast({ t: 'deck-updated', deckId: id, updatedAt: d.updatedAt })
+        return { code: 200, body: d }
+      })
+      return json(res, result.code, result.body)
+    }
     if (sub === 'notes' && m === 'POST') {
       try { return json(res, 200, await generateNotes(id)) } catch (e) { return json(res, 500, { error: (e as Error).message }) }
     }
@@ -624,12 +644,12 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     const b = await body(req)
     const id = String(b.deckId ?? state.deckId ?? '')
     if (!validId(id) || !(await readDeck(id))) return json(res, 404, { error: 'no such deck' })
-    await setDeck(id)
+    await setMode('present', { deckId: id })
     if (typeof b.slide === 'number') {
       const moved = applyNav(state, slides() as any, { action: 'goto', slide: b.slide, source: 'human' }, clock, Date.now(), stepsAt)
       state = moved.state
     }
-    await setMode('present', { deckId: id })
+    broadcastState()
     const how = launchPresenter(id)
     return json(res, 200, { ok: true, launched: how, state })
   }
@@ -695,7 +715,8 @@ function countScreens() {
 wss.on('connection', (ws: WebSocket) => {
   const c: Client = { ws, role: 'unknown' }
   clients.add(c)
-  ws.on('message', async raw => {
+  let incoming = Promise.resolve()
+  ws.on('message', raw => { incoming = incoming.then(async () => {
     let msg: any
     try { msg = JSON.parse(raw.toString()) } catch { return }
     try {
@@ -706,6 +727,7 @@ wss.on('connection', (ws: WebSocket) => {
           if (msg.deckId && state.mode === 'idle' && ['audience', 'speaker'].includes(c.role) && msg.deckId !== state.deckId) await setDeck(msg.deckId)
           if (c.role === 'director') log('director connected')
           send(c, { t: 'state', state })
+          if (c.deckId && noteStatus.has(c.deckId)) send(c, noteStatus.get(c.deckId))
           countScreens()
           break
         case 'black':
@@ -758,7 +780,7 @@ wss.on('connection', (ws: WebSocket) => {
     } catch (e) {
       log('ws message error:', (e as Error).message)
     }
-  })
+  }) })
   ws.on('close', () => {
     clients.delete(c)
     countScreens()
@@ -770,6 +792,14 @@ wss.on('connection', (ws: WebSocket) => {
     if (c.role === 'director' && ![...clients].some(x => x.role === 'director')) {
       log('director disconnected')
       setAgent('offline')
+    }
+    if (c.role === 'speaker') {
+      const takeId = state.takeId
+      setTimeout(() => {
+        if (takeId && state.takeId === takeId && state.mode === 'present' && ![...clients].some(x => x.role === 'speaker')) {
+          void setMode('idle').catch(e => log('presenter close:', e.message))
+        }
+      }, 5000).unref()
     }
   })
 })

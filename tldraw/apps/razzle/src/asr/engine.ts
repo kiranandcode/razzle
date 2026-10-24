@@ -70,10 +70,24 @@ function loadModel(): Promise<{ device: 'webgpu' | 'wasm'; model: string }> {
 	if (ready) return ready
 	ready = new Promise((resolve, reject) => {
 		worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module', name: 'razzle-asr' })
+		const fail = (error: Error) => {
+			clearTimeout(timer)
+			worker?.terminate()
+			worker = null
+			ready = null
+			for (const job of jobs.values()) job.reject(error)
+			jobs.clear()
+			reject(error)
+			if (session) {
+				void stop().then(() => setMicView({ status: 'error', message: error.message }))
+			}
+		}
+		const timer = setTimeout(() => fail(new Error('Speech model startup timed out. Click the mic to retry.')), 120000)
 		worker.onmessage = (ev: MessageEvent<WorkerOut>) => {
 			const m = ev.data
 			if (m.type === 'progress') setMicView({ progress: m.total ? m.loaded / m.total : null })
 			else if (m.type === 'ready') {
+				clearTimeout(timer)
 				console.info(`[razzle asr] ${m.model} ${m.detail}, ready in ${m.ms} ms`)
 				stats.device = m.device
 				stats.model = m.model
@@ -84,10 +98,7 @@ function loadModel(): Promise<{ device: 'webgpu' | 'wasm'; model: string }> {
 				jobs.delete(m.id)
 			} else if (m.type === 'error') {
 				if (m.id === undefined) {
-					ready = null
-					worker?.terminate()
-					worker = null
-					reject(new Error(`speech model failed to load: ${m.message}`))
+					fail(new Error(`speech model failed to load: ${m.message}`))
 				} else {
 					jobs.get(m.id)?.reject(new Error(m.message))
 					jobs.delete(m.id)
@@ -95,9 +106,7 @@ function loadModel(): Promise<{ device: 'webgpu' | 'wasm'; model: string }> {
 			}
 		}
 		worker.onerror = (e) => {
-			ready = null
-			worker = null
-			reject(new Error(`speech worker failed: ${e.message || 'could not start'}`))
+			fail(new Error(`speech worker failed: ${e.message || 'could not start'}`))
 		}
 		// a path, not a URL: transformers.js only tries a local copy (and reads its size) for paths
 		const modelsUrl = `${BASE}/models/`
@@ -106,7 +115,10 @@ function loadModel(): Promise<{ device: 'webgpu' | 'wasm'; model: string }> {
 	return ready
 }
 
-function transcribe(pcm: Float32Array): Promise<{ text: string; ms: number }> {
+export const warmup = () => loadModel()
+
+async function transcribe(pcm: Float32Array): Promise<{ text: string; ms: number }> {
+	await loadModel()
 	return new Promise((resolve, reject) => {
 		if (!worker) return reject(new Error('no speech worker'))
 		const id = ++jobId
@@ -133,6 +145,8 @@ interface Session {
 	held: boolean
 	level: number
 	levelAt: number
+	modelReady: boolean
+	notice: string
 }
 
 let session: Session | null = null
@@ -156,6 +170,7 @@ export async function start(): Promise<void> {
 	setMicView({ status: 'loading', message: '', progress: null })
 	// the model and the permission prompt in parallel
 	const model = loadModel()
+	void model.catch(() => {})
 	let stream: MediaStream
 	try {
 		stream = await navigator.mediaDevices.getUserMedia({
@@ -164,13 +179,6 @@ export async function start(): Promise<void> {
 	} catch (e) {
 		model.catch(() => {}) // still loading; kept for the next try
 		throw micError(e)
-	}
-	let device: 'webgpu' | 'wasm', modelName: string
-	try {
-		;({ device, model: modelName } = await model)
-	} catch (e) {
-		stream.getTracks().forEach((t) => t.stop())
-		throw e
 	}
 	if (my !== run) {
 		stream.getTracks().forEach((t) => t.stop())
@@ -181,8 +189,17 @@ export async function start(): Promise<void> {
 	const url = URL.createObjectURL(new Blob([WORKLET], { type: 'text/javascript' }))
 	try {
 		await ctx.audioWorklet.addModule(url)
+	} catch (e) {
+		stream.getTracks().forEach((t) => t.stop())
+		void ctx.close()
+		throw e
 	} finally {
 		URL.revokeObjectURL(url)
+	}
+	if (my !== run) {
+		stream.getTracks().forEach((t) => t.stop())
+		void ctx.close()
+		return
 	}
 	const src = ctx.createMediaStreamSource(stream)
 	const node = new AudioWorkletNode(ctx, 'razzle-downsample', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] })
@@ -192,13 +209,19 @@ export async function start(): Promise<void> {
 
 	const s: Session = {
 		stream, ctx, node, seg: new Segmenter(Date.now()), timer: 0 as any, unsub: [], live: new Set(), pending: [],
-		partialBusy: false, held: false, level: 0, levelAt: 0,
+		partialBusy: false, held: false, level: 0, levelAt: 0, modelReady: false, notice: '',
 	}
 	session = s
 	node.port.onmessage = (ev: MessageEvent<Float32Array>) => onSamples(s, ev.data)
 	s.timer = setInterval(() => tickPartial(s), SEG_TUNING.partialEveryMs)
 
+	let position = JSON.stringify([getRazzle().state.deckId, getRazzle().state.slideIndex, getRazzle().state.step, getRazzle().state.mode])
 	s.unsub.push(
+		on('state', ({ state }) => {
+			const next = JSON.stringify([state.deckId, state.slideIndex, state.step, state.mode])
+			if (position !== next) s.seg.flush().forEach((e) => onSegEvent(s, e))
+			position = next
+		}),
 		on('mic', (m) => {
 			if (session !== s) return
 			if (!m.held && s.held) {
@@ -225,32 +248,46 @@ export async function start(): Promise<void> {
 	// claimed from here on; the server answers {t:'mic', held} and tells us if another screen takes it
 	send({ t: 'mic', on: true })
 	s.held = true
-	const notice = device === 'wasm' ? 'No WebGPU in this browser: transcribing with the small model on the CPU (slower, less accurate).' : ''
-	setMicView({ status: 'listening', device, model: modelName.replace(/^.*\//, ''), progress: null, message: notice })
-	await resumeAudio(s, notice)
+	resumeAudio(s)
+	try {
+		const { device, model: modelName } = await model
+		if (session !== s) return
+		s.modelReady = true
+		s.notice = device === 'wasm' ? 'Transcribing on the CPU.' : ''
+		setMicView({ device, model: modelName.replace(/^.*\//, ''), progress: null })
+		updateCaptureStatus(s)
+	} catch (e) {
+		if (session === s) await stop()
+		throw e
+	}
 }
 
-/** Autoplay rules can leave the context suspended until the page gets a click or a key. */
-async function resumeAudio(s: Session, notice: string) {
-	if (s.ctx.state === 'running') return
-	await s.ctx.resume().catch(() => {})
-	if ((s.ctx.state as AudioContextState) === 'running') return
-	setMicView({ message: 'Click or press a key to start listening.' })
+function updateCaptureStatus(s: Session) {
+	if (session !== s) return
+	if (s.ctx.state !== 'running') setMicView({ status: 'waiting', message: 'Click the mic or press a key to start listening.' })
+	else setMicView({ status: s.modelReady ? 'listening' : 'loading', message: s.modelReady ? s.notice : 'Capturing speech while the model loads…' })
+}
+
+// resume() may stay pending until a gesture. Register that gesture before calling it.
+function resumeAudio(s: Session) {
 	const go = () => {
-		void s.ctx.resume().then(() => {
-			if (session === s && s.ctx.state === 'running') {
-				setMicView({ message: notice })
-				window.removeEventListener('pointerdown', go, true)
-				window.removeEventListener('keydown', go, true)
-			}
-		})
+		if (s.ctx.state === 'running' || session !== s) return
+		void s.ctx.resume().then(() => updateCaptureStatus(s)).catch(() => {})
 	}
+	s.ctx.onstatechange = () => updateCaptureStatus(s)
 	window.addEventListener('pointerdown', go, true)
 	window.addEventListener('keydown', go, true)
 	s.unsub.push(() => {
 		window.removeEventListener('pointerdown', go, true)
 		window.removeEventListener('keydown', go, true)
+		s.ctx.onstatechange = null
 	})
+	updateCaptureStatus(s)
+	go()
+}
+
+export function resume() {
+	if (session) void session.ctx.resume().then(() => session && updateCaptureStatus(session))
 }
 
 export async function stop(message = ''): Promise<void> {
@@ -263,14 +300,14 @@ export async function stop(message = ''): Promise<void> {
 	session = null
 	clearInterval(s.timer)
 	s.node.port.onmessage = null
-	// close the open segment so its final reaches the take, then let go
-	s.seg.flush().forEach((e) => onSegEvent(s, e))
-	await Promise.race([Promise.all(s.pending), new Promise((r) => setTimeout(r, 8000))])
-	if (s.held) send({ t: 'mic', on: false })
 	s.unsub.forEach((u) => u())
 	s.stream.getTracks().forEach((t) => t.stop())
 	void s.ctx.close().catch(() => {})
-	setMicView({ status: 'off', level: 0, message })
+	// close the open segment so its final reaches the take, then let go
+	s.seg.flush().forEach((e) => onSegEvent(s, e))
+	await Promise.race([Promise.all(s.pending), new Promise((r) => setTimeout(r, 120000))])
+	if (s.held) send({ t: 'mic', on: false })
+	if (!session) setMicView({ status: 'off', level: 0, message })
 }
 
 function onSamples(s: Session, x: Float32Array) {
@@ -325,7 +362,7 @@ async function tickPartial(s: Session) {
 	const open = s.seg.open
 	// skip while the speaker has gone quiet: nothing new to transcribe, and the segment is about to
 	// close, when a partial still running would delay its pause transcription
-	if (!open || s.partialBusy || !s.live.has(open.segId) || open.ms < 400 || open.silentMs >= 200) return
+	if (!s.modelReady || !open || s.partialBusy || !s.live.has(open.segId) || open.ms < 400 || open.silentMs >= 200) return
 	s.partialBusy = true
 	try {
 		const { text, ms } = await transcribe(open.pcm())
