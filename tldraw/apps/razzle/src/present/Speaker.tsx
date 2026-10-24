@@ -159,7 +159,10 @@ export function Speaker({
 		first: () => goto(firstPos(slides)),
 		last: () => goto(lastPos(slides)),
 		toggleBlack: () => setBlack(!state.black),
-		escape: () => setHelpOpen(false),
+		escape: () => {
+			setBlack(false)
+			setHelpOpen(false)
+		},
 		extra: {
 			g: () => (newest >= 0 ? goto({ slide: newest, step: 0 }) : acknowledge('no hidden slides')),
 			// the public build has no agent: nothing to ask, nothing to auto-advance
@@ -254,11 +257,18 @@ export function Speaker({
 							{notesStatus.message}
 						</span>
 					)}
-					{state.black && (
-						<span className="rz-tag rz-black-tag" title="b to restore">
-							Audience black
-						</span>
-					)}
+					<button
+						className={state.black ? 'rz-auto rz-black-tag' : 'rz-auto'}
+						aria-pressed={state.black}
+						onClick={() => setBlack(!state.black)}
+						title={
+							state.black
+								? 'Restore the audience slides (Esc or B)'
+								: 'Hide the audience slides (B)'
+						}
+					>
+						{state.black ? 'Audience hidden · Show slides' : 'Hide audience'}
+					</button>
 					<MicToggle variant="speaker" />
 					{!connected && <span className="rz-offline">reconnecting…</span>}
 				</div>

@@ -25,7 +25,7 @@ import { micStart, micStop, useAutoMic, useBrowserMic } from '../asr/mic'
 import { MicToggle } from '../asr/MicToggle'
 import { RedoNarration } from '../asr/RedoNarration'
 import { PUBLIC } from '../model/base'
-import { nav, setMode, useRazzle, type PresentationOptions } from '../model/client'
+import { nav, setBlack, setMode, useRazzle, type PresentationOptions } from '../model/client'
 import { generateNotes } from '../model/deck'
 import { SaveStatus } from '../model/persist'
 import { getSlides } from '../model/slides'
@@ -119,8 +119,19 @@ function SaveState() {
 }
 
 export function RazzleSharePanel() {
+	const black = useRazzle((s) => s.state.black)
 	return (
 		<div className="rz-share-zone">
+			{black && (
+				<TldrawUiButton
+					type="primary"
+					className="rz-top-btn"
+					title="The audience is hidden. Restore the slides."
+					onClick={() => setBlack(false)}
+				>
+					<TldrawUiButtonLabel>Show audience</TldrawUiButtonLabel>
+				</TldrawUiButton>
+			)}
 			{!PUBLIC && <AgentDot />}
 			<InspectorToggle tab="builds" icon="rz-builds" label="Builds" />
 			<InspectorToggle tab="speech" icon="rz-speech" label="Speech" />

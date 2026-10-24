@@ -41,6 +41,7 @@ export function useKeys(actions: KeyActions): string {
 			if (e.metaKey || e.ctrlKey || e.altKey) return
 			const t = e.target as HTMLElement | null
 			if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return
+			if (t?.closest('button, a[href]') && (e.key === 'Enter' || e.key === ' ')) return
 			const a = actionsRef.current
 			const typed = typedRef.current
 
@@ -95,7 +96,9 @@ export function clickNav() {
 	const ignore = (e: React.MouseEvent) => {
 		const sel = window.getSelection()
 		if (sel && !sel.isCollapsed && sel.toString().trim()) return true
-		return !!(e.target as HTMLElement).closest('button, a, input, textarea, select, [contenteditable="true"]')
+		return !!(e.target as HTMLElement).closest(
+			'button, a, input, textarea, select, [contenteditable="true"]'
+		)
 	}
 	return {
 		onClick: (e: React.MouseEvent) => {

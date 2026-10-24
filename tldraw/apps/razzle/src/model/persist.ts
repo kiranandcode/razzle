@@ -41,7 +41,8 @@ export async function openDeck(id: string): Promise<OpenedDeck> {
 	try {
 		deck = await loadDeck(id)
 	} catch (e) {
-		if (e instanceof Error && /^404/.test(e.message)) return local ? { kind: 'local', deck: local.deck, base: local.base } : { kind: 'missing' }
+		if (e instanceof Error && /^404/.test(e.message))
+			return local ? { kind: 'local', deck: local.deck, base: local.base } : { kind: 'missing' }
 		if (local) return { kind: 'local', deck: local.deck, base: local.base }
 		throw e
 	}
@@ -56,12 +57,14 @@ const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.s
 
 function recordsOf(editor: Editor, doc: TLStoreSnapshot): Map<string, TLRecord> {
 	const migrated = editor.store.schema.migrateStoreSnapshot(doc)
-	if (migrated.type !== 'success') throw new Error('cannot migrate the server document: ' + migrated.reason)
+	if (migrated.type !== 'success')
+		throw new Error('cannot migrate the server document: ' + migrated.reason)
 	return new Map(Object.entries(migrated.value) as [string, TLRecord][])
 }
 
 const isDocumentRecord = (r: TLRecord) => editor_scope.has(r.typeName)
-const editor_scope = new Set(['document', 'page', 'shape', 'binding', 'asset'])
+const DOCUMENT_TYPES = ['document', 'page', 'shape', 'binding', 'asset'] as const
+const editor_scope = new Set<string>(DOCUMENT_TYPES)
 
 export interface DeckSync {
 	readonly deckId: string
@@ -116,12 +119,44 @@ export function startDeckSync(
 		schedule()
 	}
 
-	const unlisten = editor.store.listen(markEdited, { scope: 'document', source: 'user' })
+	// Store listeners wait for an animation frame, which can stall in background tabs.
+	// Track document operations synchronously so an immediate flush sees API edits too.
+	let changedInOperation = false
+	const changed = (source: string) => {
+		if (source === 'user') changedInOperation = true
+	}
+	const unlisten = DOCUMENT_TYPES.flatMap((type) => [
+		editor.store.sideEffects.registerAfterCreateHandler(type, (_record, source) => changed(source)),
+		editor.store.sideEffects.registerAfterChangeHandler(type, (_prev, _next, source) =>
+			changed(source)
+		),
+		editor.store.sideEffects.registerAfterDeleteHandler(type, (_record, source) => changed(source)),
+	])
+	unlisten.push(
+		editor.store.sideEffects.registerOperationCompleteHandler(() => {
+			if (!changedInOperation) return
+			changedInOperation = false
+			markEdited()
+		})
+	)
+
+	function detectEdits(records?: Map<string, TLRecord>) {
+		if (dirty) return
+		records ??= currentRecords()
+		if (
+			records.size !== base.size ||
+			[...records].some(([id, record]) => !same(base.get(id), record))
+		) {
+			dirty = true
+			if (!saving) $status.set('edited')
+		}
+	}
 
 	/** Three-way merge of a server document into the editor. */
 	function mergeServer(server: Deck) {
 		const S = recordsOf(editor, server.document)
 		const L = currentRecords()
+		detectEdits(L)
 		const B = base
 		const put: TLRecord[] = []
 		const remove: TLRecord['id'][] = []
@@ -189,13 +224,14 @@ export function startDeckSync(
 					const r = await saveDeck(out)
 					base = sent
 					baseVersion = r.updatedAt
+					detectEdits()
 					try {
 						localStorage.removeItem(LOCAL_PREFIX + id)
 					} catch {
 						/* ignore */
 					}
 					$error.set('')
-					$status.set(dirty ? 'edited' : 'saved')
+					$status.set(dirty || titleDirty ? 'edited' : 'saved')
 					return
 				} catch (e) {
 					if (e instanceof StaleDeckError) {
@@ -206,7 +242,12 @@ export function startDeckSync(
 						continue
 					}
 					// No server (or it failed): keep the edits in this browser.
-					const ok = writeLocalDeck({ deck: { ...out, updatedAt: undefined }, base: baseVersion, unsynced: true, savedAt: Date.now() })
+					const ok = writeLocalDeck({
+						deck: { ...snapshotDeck(), updatedAt: undefined },
+						base: baseVersion,
+						unsynced: true,
+						savedAt: Date.now(),
+					})
 					$error.set(e instanceof Error ? e.message : String(e))
 					$status.set(ok ? 'local' : 'error')
 					return
@@ -230,9 +271,8 @@ export function startDeckSync(
 		try {
 			const server = await loadDeck(id)
 			if (baseVersion !== undefined && (server.updatedAt ?? 0) <= baseVersion) return
-			const hadEdits = dirty
 			mergeServer(server)
-			if (hadEdits) void save()
+			if (dirty || titleDirty) void save()
 		} catch {
 			/* server went away; the next save handles it */
 		}
@@ -253,8 +293,14 @@ export function startDeckSync(
 	})
 
 	const onUnload = () => {
+		detectEdits()
 		if (dirty || titleDirty) {
-			writeLocalDeck({ deck: { ...snapshotDeck(), updatedAt: undefined }, base: baseVersion, unsynced: true, savedAt: Date.now() })
+			writeLocalDeck({
+				deck: { ...snapshotDeck(), updatedAt: undefined },
+				base: baseVersion,
+				unsynced: true,
+				savedAt: Date.now(),
+			})
 		}
 	}
 	window.addEventListener('beforeunload', onUnload)
@@ -273,14 +319,20 @@ export function startDeckSync(
 			$status.set('edited')
 			schedule()
 		},
-		flush: () => save(),
+		async flush() {
+			do {
+				detectEdits()
+				await save()
+			} while (!disposed && (dirty || titleDirty) && $status.get() === 'edited')
+		},
 		applyServerDeck(server: Deck) {
 			if (server.document) mergeServer(server)
 		},
 		dispose() {
+			detectEdits()
 			clearTimeout(timer)
 			disposed = true
-			unlisten()
+			unlisten.forEach((stop) => stop())
 			offDeckUpdated()
 			offState()
 			window.removeEventListener('beforeunload', onUnload)
@@ -288,7 +340,12 @@ export function startDeckSync(
 				// Leaving with unsaved edits: keep them in the browser and send them on the way out.
 				try {
 					const out = snapshotDeck()
-					writeLocalDeck({ deck: { ...out, updatedAt: undefined }, base: baseVersion, unsynced: true, savedAt: Date.now() })
+					writeLocalDeck({
+						deck: { ...out, updatedAt: undefined },
+						base: baseVersion,
+						unsynced: true,
+						savedAt: Date.now(),
+					})
 					saveDeck(out)
 						.then(() => localStorage.removeItem(LOCAL_PREFIX + id))
 						.catch(() => {})

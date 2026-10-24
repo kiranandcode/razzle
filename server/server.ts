@@ -194,7 +194,9 @@ async function setMode(mode: Mode, opts: { auto?: boolean, deckId?: string, work
   if (state.takeId && (mode === 'idle' || newSession)) closeTake()
   if (opts.deckId && changingDeck) await setDeck(opts.deckId)
   if (mode !== 'idle' && !deck) throw new Error('no deck selected (pass deckId)')
-  state = { ...state, mode, workflow, auto: workflow === 'present' && (opts.auto ?? (newSession ? true : state.auto)) }
+  const startingPresentation = mode === 'present' && (state.mode !== 'present' || opts.workflow !== undefined)
+  state = { ...state, mode, workflow, black: mode === 'idle' || newSession || startingPresentation ? false : state.black,
+    auto: workflow === 'present' && (opts.auto ?? (newSession ? true : state.auto)) }
   if (newSession || mode === 'idle') {
     sessionNumber++
     enteredAt = Date.now()
@@ -685,7 +687,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     const b = await body(req)
     const id = String(b.deckId ?? state.deckId ?? '')
     if (!validId(id) || !(await readDeck(id))) return json(res, 404, { error: 'no such deck' })
-    await setMode('present', { deckId: id, workflow: b.workflow, recording: b.recording })
+    await setMode('present', { deckId: id, workflow: b.workflow ?? 'present', recording: b.recording })
     if (typeof b.slide === 'number') {
       const moved = applyNav(state, slides() as any, { action: 'goto', slide: b.slide, source: 'human' }, clock, Date.now(), stepsAt)
       state = moved.state

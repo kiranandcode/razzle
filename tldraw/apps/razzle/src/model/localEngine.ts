@@ -146,7 +146,7 @@ export function startLocalEngine(initial: PresState, deliver: (msg: ServerMessag
 				const mode = msg.mode === 'present' || msg.mode === 'record' ? msg.mode : 'idle'
 				// no recording without a server; presenting needs a deck
 				if (mode === 'record' || (mode === 'present' && !state.deckId)) break
-				state = { ...state, mode }
+				state = { ...state, mode, black: false }
 				break
 			}
 			case 'steps': {

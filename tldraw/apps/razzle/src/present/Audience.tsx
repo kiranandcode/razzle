@@ -29,11 +29,13 @@ export function Audience({
 	const [editor, setEditor] = useState<Editor | null>(null)
 	const [fit, setFit] = useState<FitRect | null>(null)
 
-	const goto = (p: { slide: number; step: number } | null) => p && nav('goto', { slide: p.slide, step: p.step })
+	const goto = (p: { slide: number; step: number } | null) =>
+		p && nav('goto', { slide: p.slide, step: p.step })
 	useKeys({
 		first: () => goto(firstPos(slides)),
 		last: () => goto(lastPos(slides)),
 		toggleBlack: () => setBlack(!state.black),
+		escape: () => setBlack(false),
 	})
 
 	// The cursor disappears after 2 s without movement.
@@ -47,7 +49,11 @@ export function Audience({
 	useEffect(() => () => void (cursorTimer.current && clearTimeout(cursorTimer.current)), [])
 
 	return (
-		<div className={`rz-audience${cursorHidden ? ' rz-no-cursor' : ''}`} onMouseMove={wake} {...clickNav()}>
+		<div
+			className={`rz-audience${cursorHidden ? ' rz-no-cursor' : ''}`}
+			onMouseMove={wake}
+			{...clickNav()}
+		>
 			{deck && (
 				<Stage
 					deck={deck}
@@ -58,7 +64,12 @@ export function Audience({
 					onLoaded={(ed) => onLoaded(ed)}
 					onFit={setFit}
 				>
-					<Highlights editor={editor} slideIndex={state.slideIndex} fit={fit} slideW={deck.width || 1000} />
+					<Highlights
+						editor={editor}
+						slideIndex={state.slideIndex}
+						fit={fit}
+						slideW={deck.width || 1000}
+					/>
 				</Stage>
 			)}
 			{state.black && <div className="rz-black" />}
