@@ -42,6 +42,10 @@ razzle slide add <deck> [--hidden] < slide.json
 Before writing slides, read `shared/STYLE.md`. Build from the library (`shared/library.json`;
 refer to an item with `{"type": "library", "ref": <id>, "left", "top", "texts"?}`). Rules:
 
+- Code goes in a code element, highlighted in the studio:
+  `{"type": "code", "id", "left", "top", "width", "height", "rotate": 0, "code": "line 1\nline 2",
+  "language": "c" | "python" | "lean" | "ocaml" | "js" | "ts" | "rust" | "bash" | "json" | "text",
+  "size": 15, "background": true}`. It does not wrap; height = lines × size × 1.6 + 1.6 × size.
 - Few words. Put one cue glyph on screen per sentence of the talk, revealed one per build step.
 - Click-triggered animations become build steps. `razzle.script[step]` is the line for each step,
   `razzle.cues` are the transition words, and `hidden` marks backup slides.

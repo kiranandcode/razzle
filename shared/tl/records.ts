@@ -238,6 +238,33 @@ export function makeRazzlePath(o: BaseOpts, p: Partial<RazzlePathRecordProps> & 
 	})
 }
 
+/** `razzle-code` (tldraw/apps/razzle/src/shapes/razzleCodeSchema.ts): a highlighted code block. */
+export type CodeLanguage = 'c' | 'python' | 'lean' | 'ocaml' | 'js' | 'ts' | 'rust' | 'bash' | 'json' | 'text'
+export const CODE_LANGUAGES: readonly CodeLanguage[] = ['c', 'python', 'lean', 'ocaml', 'js', 'ts', 'rust', 'bash', 'json', 'text']
+export interface RazzleCodeRecordProps {
+	w: number
+	h: number
+	code: string
+	language: CodeLanguage
+	size: number
+	background: boolean
+}
+const LANGUAGE_ALIASES: Record<string, CodeLanguage> = {
+	javascript: 'js', typescript: 'ts', lean4: 'lean', py: 'python', sh: 'bash', shell: 'bash', shellscript: 'bash', ml: 'ocaml', rs: 'rust', plain: 'text', plaintext: 'text', while: 'js',
+}
+/** A language name or common alias → a razzle-code language ('text' when unknown). */
+export function codeLanguage(l: unknown): CodeLanguage {
+	const k = String(l ?? '').toLowerCase()
+	return (CODE_LANGUAGES as readonly string[]).includes(k) ? (k as CodeLanguage) : LANGUAGE_ALIASES[k] ?? 'text'
+}
+export function makeRazzleCode(o: BaseOpts, p: Omit<RazzleCodeRecordProps, 'language'> & { language: string }): ShapeRecord {
+	return makeShape('razzle-code', o, {
+		w: Math.max(p.w, 0.01), h: Math.max(p.h, 0.01), code: p.code,
+		language: codeLanguage(p.language),
+		size: p.size > 0 ? p.size : 15, background: !!p.background,
+	})
+}
+
 export interface StrokeStyle {
 	color: string
 	dash: 'draw' | 'solid' | 'dashed' | 'dotted'

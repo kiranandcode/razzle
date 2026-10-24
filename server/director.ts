@@ -463,6 +463,7 @@ Element shapes (all need id, left, top, width, height, rotate:0):
   e.g. a rectangle: "viewBox":[200,200],"path":"M 0 0 L 200 0 L 200 200 L 0 200 Z"
 - line: {"type":"line","start":[x,y],"end":[x,y],"width":2,"style":"solid","color":string,"points":["","arrow"], plus left/top (origin) and width; no height/rotate}
   start/end are relative to (left, top).
+- code: {"type":"code","code":"line 1\\nline 2","language":"c"|"python"|"lean"|"ocaml"|"js"|"ts"|"rust"|"bash"|"json"|"text","size":15} (a syntax-highlighted Roboto Mono block on #f3f3f3; height ≈ lines × size × 1.6 + 2 × 0.8 × size; it does not wrap)
 - latex: avoid unless essential (needs a precomputed SVG path).
 No images unless the library provides a usable src. No animations.
 Prefer few, large elements: a title, then a diagram or 3-5 short points. Use the deck's fonts and colours.${style ? '\n\nThe Razzle visual style (shared/STYLE.md):\n' + style : ''}${libraryPrompt(lib)}`

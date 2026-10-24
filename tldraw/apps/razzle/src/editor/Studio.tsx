@@ -12,6 +12,7 @@ import { DECK_FORMAT, Deck, SLIDE_H, SLIDE_W } from '../model/types'
 import { editorShapeUtils } from '../shapes'
 import { applyRazzleDefaults, tldrawThemeProps } from '../theme'
 import { BuildsPanel } from './BuildsPanel'
+import { clipboardOptions } from './clipboard'
 import { StudioContext } from './context'
 import { LIBRARY_DRAG_TYPE, LibraryPanel, libraryItem } from './LibraryPanel'
 import { insertLibraryItem } from './library'
@@ -26,7 +27,7 @@ import './studio.css'
 
 /** Geo labels without tldraw's white halo (slides are flat). */
 const shapeUtils = editorShapeUtils
-const options = { maxPages: 1 }
+const options = { maxPages: 1, ...clipboardOptions }
 
 /** Decks made in the picker that have not reached the server yet: id → title. */
 const fresh = new Map<string, string>()

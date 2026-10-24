@@ -932,3 +932,45 @@
 .rz-split .tlui-button:disabled {
 	opacity: 0.45;
 }
+
+/* Code block style section (CodeStylePanel.tsx) */
+.rz-code-style {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 0 8px 8px;
+	font-size: 12px;
+	color: var(--tl-color-text-1);
+}
+.rz-code-style-row {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+.rz-code-style-row .rz-select {
+	width: 100%;
+	min-width: 0;
+}
+.rz-code-style-check {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	cursor: pointer;
+}
+.rz-code-style-check input {
+	margin: 0;
+}
+.rz-code-fit {
+	align-self: flex-start;
+	border: 1px solid var(--tl-color-divider);
+	border-radius: var(--tl-radius-2);
+	background: var(--tl-color-panel-contrast);
+	color: var(--tl-color-text-0);
+	font: inherit;
+	font-size: 12px;
+	padding: 4px 8px;
+	cursor: pointer;
+}
+.rz-code-fit:hover {
+	background: var(--tl-color-muted-2);
+}

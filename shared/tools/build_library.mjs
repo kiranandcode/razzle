@@ -193,16 +193,15 @@ add('outline-checks', 'Outline with checks', 'text', 'Numbered outline where fin
 })
 add('stat-big', 'Big number (teal)', 'text', '44px teal number with a 17px gray subline.', () => stat({}))
 add('stat-bug', 'Big number (dark red)', 'text', '44px dark-red count of failures ("2 bugs found").', () => [text({ x: 0, y: 0, w: 420, lines: ['2 bugs found'], size: T.stat, color: P.bug, align: 'center', lh: 1.2 })])
-add('code-block', 'Code block', 'text', 'Roboto Mono 13px on #f3f3f3, 12/16px padding, keyword in blue.', () => [text({
-  x: 0, y: 0, w: 520, size: T.code, color: '#333333', font: F.mono, fill: P.code, lh: 1.6, inset: [12, 16, 12, 16], name: 'code',
-  html: [
-    [run('theorem', { color: P.blue }), ' zlib_decompress_compress'],
-    ['  (data : ByteArray) (level : UInt8)'],
-    ['  (hsize : data.size < 1024 * 1024 * 1024) :'],
-    ['  Zlib.decompress (Zlib.compress data level) = .ok data'],
-  ].map(l => para(l.map(x => x.startsWith('<') ? x : run(x)).join(''))).join(''),
-  lines: ['', '', '', ''],
-})])
+add('code-block', 'Code block', 'text', 'Syntax-highlighted Roboto Mono 15px on #f3f3f3 (razzle-code); pick the language in the style panel, double-click to edit.', () => code({
+  x: 0, y: 0, language: 'lean', name: 'code',
+  lines: [
+    'theorem zlib_decompress_compress',
+    '  (data : ByteArray) (level : UInt8)',
+    '  (hsize : data.size < 1024 * 1024 * 1024) :',
+    '  Zlib.decompress (Zlib.compress data level) = .ok data',
+  ],
+}))
 add('inline-code-sentence', 'Sentence with inline code', 'text', 'Gray body sentence with a Roboto Mono span on a #f3f3f3 background.', () => [text({
   x: 0, y: 0, w: 560, size: 16, color: P.body,
   html: para(run('For any byte array, ') + run('decompress(compress(data)) = data', { font: F.mono, bg: P.code, color: P.stat }) + run('.')),

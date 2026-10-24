@@ -3,11 +3,12 @@ import { AtomMap } from '@tldraw/store'
 import { TLFontFace, TLShape, TLShapeId } from '@tldraw/tlschema'
 import {
 	areArraysShallowEqual,
+	assert,
 	compact,
-	FileHelpers,
 	mapObjectMapValues,
 	objectMapEntries,
 } from '@tldraw/utils'
+import { resourceToDataUrl } from '../../../exports/fetchCache'
 import { areShapesContentEqual } from '../../../utils/areShapesContentEqual'
 import type { Editor } from '../../Editor'
 
@@ -229,7 +230,8 @@ export class FontManager {
 
 	async toEmbeddedCssDeclaration(font: TLFontFace) {
 		const url = this.assetUrls?.[font.src.url] ?? font.src.url
-		const dataUrl = await FileHelpers.urlToDataUrl(url)
+		const dataUrl = url.startsWith('data:') ? url : await resourceToDataUrl(url)
+		assert(dataUrl, `Could not embed font: ${url}`)
 
 		const src = compact([
 			`url("${dataUrl}")`,

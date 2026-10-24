@@ -252,7 +252,16 @@ Model (`src/model/types.ts`, `src/model/slides.ts`):
   director: per slide its frame id, title, razzle meta, stepCount, and every shape's text and box in
   slide coordinates. Director highlights name tldraw shape ids.
 - Registered everywhere an editor is created (studio, screens, export): `src/shapes` (custom shape
-  utils, incl. `razzle-path` for exact library shapes) and `src/theme` (Razzle palette and fonts:
+  utils, incl. `razzle-path` for exact library shapes and `razzle-code` for highlighted code) and
+  `src/theme` (Razzle palette and fonts:
   serif = Libre Baskerville, mono = Roboto Mono, sans = Inter).
 - Screens render a slide with a read-only tldraw editor on the same document, camera fitted to the
   frame, with build opacities applied in memory (never saved).
+- `razzle-code` (`src/shapes/RazzleCodeShapeUtil.tsx`): props `{w, h, code, language, size,
+  background}`, Roboto Mono at line height 1.6, no wrapping (clipped to the box). Highlighting is
+  Shiki core with the JavaScript regex engine; the core and each grammar are lazy chunks
+  (`codeHighlight.ts`), and the canvas shows plain text until they load. `toSvg` draws the
+  tokens as SVG text, so exports, thumbnails and reveal/PDF are highlighted; PPTX writes a native
+  text box with one coloured run per token. The style panel's Code section sets language, size and
+  background; double-click edits the source. A PPTist-side `{type: 'code', code, language, size,
+  background?}` element (`shared/tools/kit.mjs` `code()`) converts to it.

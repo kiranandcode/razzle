@@ -7,6 +7,7 @@ import {
 	DefaultKeyboardShortcutsDialogContent,
 	DefaultMainMenu,
 	DefaultStylePanel,
+	DefaultStylePanelContent,
 	DefaultToolbar,
 	DiamondToolbarItem,
 	DrawToolbarItem,
@@ -49,6 +50,8 @@ import {
 } from 'tldraw'
 import { razzleThemeOverrides } from '../theme'
 import { BuildBadges, BuildPreviewStyle } from './BuildsPanel'
+import { SlideNumbers } from '../model/SlideNumbers'
+import { CodeStylePanel, insertCodeBlock, useCodeSelected } from './CodeStylePanel'
 import { addSlide, zoomToSlide } from './slideOps'
 import { $libraryOpen } from './state'
 import { RazzleMenuPanel, RazzleSharePanel, RecordingCaption } from './TopControls'
@@ -66,6 +69,7 @@ export const studioHooks: {
 const LABELS: Record<string, string> = {
 	'tool.slide': 'Slide',
 	'action.razzle.library': 'Library',
+	'action.razzle.code': 'Code block',
 	'action.razzle.decks': 'All decks',
 	'action.razzle.export-pptx': 'PowerPoint (.pptx)',
 	'action.razzle.export-reveal': 'reveal.js (.html)',
@@ -96,11 +100,13 @@ export const studioOverrides: TLUiOverrides[] = [
 			if (tools.line) tools.line = { ...tools.line, kbd: 'shift+l' }
 			return tools
 		},
-		actions(_editor, actions) {
+		actions(editor, actions) {
 			const add = (id: string, kbd: string | undefined, onSelect: () => void, icon?: string) => {
 				actions[`razzle.${id}`] = { id: `razzle.${id}`, label: `action.razzle.${id}`, kbd, icon, readonlyOk: true, onSelect }
 			}
 			add('library', 'l', () => $libraryOpen.set(!$libraryOpen.get()), 'rz-library')
+			add('code', undefined, () => insertCodeBlock(editor), 'rz-code')
+			actions['razzle.code'].readonlyOk = false
 			add('decks', undefined, () => studioHooks.openDecks?.(), 'rz-decks')
 			add('export-pptx', undefined, () => studioHooks.exportPptx?.())
 			add('export-reveal', undefined, () => studioHooks.exportReveal?.())
@@ -122,6 +128,7 @@ function RazzleToolbar() {
 			<TldrawUiMenuToolItem toolId="slide" isSelected={slideSelected} />
 			<LibraryToolbarItem />
 			<TextToolbarItem />
+			<CodeToolbarItem />
 			<ArrowToolbarItem />
 			<LineToolbarItem />
 			<RectangleToolbarItem />
@@ -145,6 +152,13 @@ function LibraryToolbarItem() {
 	const action = actions['razzle.library']
 	if (!action) return null
 	return <TldrawUiMenuItem {...(action as any)} isSelected={open} />
+}
+
+function CodeToolbarItem() {
+	const actions = useActions()
+	const action = actions['razzle.code']
+	if (!action) return null
+	return <TldrawUiMenuItem {...(action as any)} />
 }
 
 function RazzleMainMenu() {
@@ -209,7 +223,15 @@ function RazzleShortcuts(props: TLUiKeyboardShortcutsDialogProps) {
 function RazzleStylePanel(props: TLUiStylePanelProps) {
 	const editor = useEditor()
 	const show = useValue('show style panel', () => editor.getSelectedShapeIds().length > 0 || !editor.isIn('select'), [editor])
-	return show ? <DefaultStylePanel {...props} /> : null
+	const code = useCodeSelected()
+	if (!show) return null
+	if (!code) return <DefaultStylePanel {...props} />
+	return (
+		<DefaultStylePanel {...props}>
+			<DefaultStylePanelContent />
+			<CodeStylePanel />
+		</DefaultStylePanel>
+	)
 }
 
 function InFront() {
@@ -231,6 +253,7 @@ export const studioComponents: TLComponents = {
 	Toolbar: RazzleToolbar,
 	KeyboardShortcutsDialog: RazzleShortcuts,
 	InFrontOfTheCanvas: InFront,
+	OnTheCanvas: SlideNumbers,
 	DebugPanel: null,
 	DebugMenu: null,
 	Minimap: null,

@@ -7231,29 +7231,53 @@
      "name": "title"
     },
     {
-     "type": "text",
+     "type": "shape",
+     "id": "backup-overflow-3",
+     "left": 200,
+     "top": 128,
+     "width": 600,
+     "height": 216,
+     "rotate": 0,
+     "viewBox": [
+      600,
+      216
+     ],
+     "path": "M 0 0 L 600 0 L 600 216 L 0 216 Z",
+     "fixedRatio": false,
+     "fill": "#f3f3f3"
+    },
+    {
+     "type": "shape",
+     "id": "backup-overflow-4",
+     "left": 200,
+     "top": 260,
+     "width": 600,
+     "height": 24,
+     "rotate": 0,
+     "viewBox": [
+      600,
+      24
+     ],
+     "path": "M 0 0 L 600 0 L 600 24 L 0 24 Z",
+     "fixedRatio": false,
+     "fill": "rgba(152,0,0,0.12)"
+    },
+    {
+     "type": "code",
      "id": "backup-overflow-2",
      "left": 200,
      "top": 128,
      "width": 600,
-     "height": 224,
+     "height": 216,
      "rotate": 0,
-     "content": "<p style=\"text-align: left;\"><span style=\"color: #999999;\">// src/include/lean/lean.h</span></p><p style=\"text-align: left;\"><span style=\"color: #4285f4;\">static inline</span> lean_obj_res <span style=\"color: #0097a7;\">lean_alloc_sarray</span>(</p><p style=\"text-align: left;\">    unsigned elem_size, size_t size, size_t capacity) {</p><p style=\"text-align: left;\">  lean_sarray_object * o = (lean_sarray_object*)</p><p style=\"text-align: left;\">    lean_alloc_object(sizeof(lean_sarray_object)</p><p style=\"text-align: left;\"><span style=\"color: #980000;\">                      + elem_size * capacity);</span></p><p style=\"text-align: left;\">  ...</p><p style=\"text-align: left;\">}</p>",
-     "defaultFontName": "Roboto Mono",
-     "defaultColor": "#333333",
-     "lineHeight": 1.6,
-     "paragraphSpace": 0,
-     "inset": [
-      16,
-      20,
-      16,
-      20
-     ],
-     "fill": "#f3f3f3"
+     "code": "// src/include/lean/lean.h\nstatic inline lean_obj_res lean_alloc_sarray(\n    unsigned elem_size, size_t size, size_t capacity) {\n  lean_sarray_object * o = (lean_sarray_object*)\n    lean_alloc_object(sizeof(lean_sarray_object)\n                      + elem_size * capacity);\n  ...\n}",
+     "language": "c",
+     "size": 15,
+     "background": false
     },
     {
      "type": "text",
-     "id": "backup-overflow-3",
+     "id": "backup-overflow-5",
      "left": 340,
      "top": 372,
      "width": 460,
@@ -7268,7 +7292,7 @@
     },
     {
      "type": "text",
-     "id": "backup-overflow-4",
+     "id": "backup-overflow-6",
      "left": 190,
      "top": 440,
      "width": 560,

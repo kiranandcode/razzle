@@ -68,14 +68,20 @@ export class SnapManager {
 		const selectedShapeIds = new Set(editor.getSelectedShapeIds())
 
 		const snappableShapes: Set<TLShapeId> = new Set()
+		const commonAncestor = this.getCurrentCommonAncestor() ?? editor.getCurrentPageId()
+
+		// Group children still align to their enclosing frames, including a slide outside the viewport.
+		let ancestorId: TLParentId = commonAncestor
+		while (isShapeId(ancestorId)) {
+			const ancestor = editor.getShape(ancestorId)
+			if (!ancestor) break
+			if (editor.isShapeFrameLike(ancestor) && !editor.isShapeHidden(ancestor)) {
+				snappableShapes.add(ancestorId)
+			}
+			ancestorId = ancestor.parentId
+		}
 
 		const collectSnappableShapesFromParent = (parentId: TLParentId) => {
-			if (isShapeId(parentId)) {
-				const parent = editor.getShape(parentId)
-				if (parent && editor.isShapeFrameLike(parent) && !editor.isShapeHidden(parent)) {
-					snappableShapes.add(parentId)
-				}
-			}
 			const sortedChildIds = editor.getSortedChildIdsForParent(parentId)
 			for (const childId of sortedChildIds) {
 				// Skip any selected ids
@@ -99,7 +105,7 @@ export class SnapManager {
 			}
 		}
 
-		collectSnappableShapesFromParent(this.getCurrentCommonAncestor() ?? editor.getCurrentPageId())
+		collectSnappableShapesFromParent(commonAncestor)
 
 		return snappableShapes
 	}

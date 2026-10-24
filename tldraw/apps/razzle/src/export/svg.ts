@@ -1,5 +1,6 @@
 // Whole-slide SVGs for the HTML exports (reveal.js, print/PDF).
 import { Editor, TLFrameShape } from 'tldraw'
+import { slideNumberSvg } from '../model/SlideNumbers'
 import { SlidePlan, applyStep, withExportEditor } from './exportEditor'
 
 export interface StepSvg {
@@ -30,7 +31,7 @@ export async function renderDeckSvgs(editor: Editor, plans: SlidePlan[]): Promis
 			const steps: StepSvg[] = []
 			for (const step of plan.steps) {
 				applyStep(copy, editor, plan.frame, step)
-				const svg = await frameSvg(copy, plan.frame)
+				const svg = await frameSvg(copy, plan.frame, plan.index + 1)
 				steps.push({ step, svg: hoistFonts(prefixIds(svg, `rz${n++}_`), fonts) })
 			}
 			slides.push({ plan, steps })
@@ -40,14 +41,16 @@ export async function renderDeckSvgs(editor: Editor, plans: SlidePlan[]): Promis
 	})
 }
 
-async function frameSvg(copy: Editor, frame: TLFrameShape): Promise<string> {
+async function frameSvg(copy: Editor, frame: TLFrameShape, number: number): Promise<string> {
+	const footer = slideNumberSvg(number, frame.props.w, frame.props.h)
 	const res = await copy.getSvgString([frame.id], { background: true, padding: 0, darkMode: false })
 	if (!res) {
 		// An empty slide: a blank page of the slide's size.
 		const { w, h } = frame.props
-		return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"></svg>`
+		return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${footer}</svg>`
 	}
-	return res.svg
+	const transform = copy.getShapePageTransform(frame).toCssString()
+	return res.svg.replace(/<\/svg>\s*$/, `<g transform="${transform}">${footer}</g></svg>`)
 }
 
 /** Make every id in one SVG unique within a page holding many SVGs. */

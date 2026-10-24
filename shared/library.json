@@ -7203,32 +7203,24 @@
   "id": "code-block",
   "name": "Code block",
   "category": "text",
-  "description": "Roboto Mono 13px on #f3f3f3, 12/16px padding, keyword in blue.",
+  "description": "Syntax-highlighted Roboto Mono 15px on #f3f3f3 (razzle-code); pick the language in the style panel, double-click to edit.",
   "elements": [
    {
-    "type": "text",
+    "type": "code",
     "id": "code-block-1",
     "left": 0,
     "top": 0,
-    "width": 520,
+    "width": 527,
     "height": 120,
     "rotate": 0,
-    "content": "<p style=\"text-align: left;\"><span style=\"color: #4285f4;\">theorem</span> zlib_decompress_compress</p><p style=\"text-align: left;\">  (data : ByteArray) (level : UInt8)</p><p style=\"text-align: left;\">  (hsize : data.size &lt; 1024 * 1024 * 1024) :</p><p style=\"text-align: left;\">  Zlib.decompress (Zlib.compress data level) = .ok data</p>",
-    "defaultFontName": "Roboto Mono",
-    "defaultColor": "#333333",
-    "lineHeight": 1.6,
-    "paragraphSpace": 0,
-    "inset": [
-     12,
-     16,
-     12,
-     16
-    ],
-    "fill": "#f3f3f3",
+    "code": "theorem zlib_decompress_compress\n  (data : ByteArray) (level : UInt8)\n  (hsize : data.size < 1024 * 1024 * 1024) :\n  Zlib.decompress (Zlib.compress data level) = .ok data",
+    "language": "lean",
+    "size": 15,
+    "background": true,
     "name": "code"
    }
   ],
-  "width": 520,
+  "width": 527,
   "height": 120
  },
  {

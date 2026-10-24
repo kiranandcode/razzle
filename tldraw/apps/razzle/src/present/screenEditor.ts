@@ -14,6 +14,7 @@ import {
 import { editorShapeUtils, shapeUtils } from '../shapes'
 import * as theme from '../theme'
 import type { Deck } from '../model/types'
+import { SlideNumbers } from '../model/SlideNumbers'
 
 // Read through the namespace so the screens keep working while the theme module grows.
 const themeProps: Record<string, any> = (theme as Record<string, any>).tldrawThemeProps ?? {}
@@ -33,7 +34,7 @@ const presentUser = createTLCurrentUser({
 	setUserPreferences: () => {},
 })
 
-const components: TLComponents = { Background: null, Grid: null }
+const components: TLComponents = { Background: null, Grid: null, OnTheCanvas: SlideNumbers }
 
 /** A store holding the deck document, for a screen's private editor. */
 export function makeStore(deck: Deck) {

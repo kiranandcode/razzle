@@ -13402,133 +13402,30 @@
   "id": "code-block",
   "name": "Code block",
   "category": "text",
-  "description": "Roboto Mono 13px on #f3f3f3, 12/16px padding, keyword in blue.",
-  "width": 520,
+  "description": "Syntax-highlighted Roboto Mono 15px on #f3f3f3 (razzle-code); pick the language in the style panel, double-click to edit.",
+  "width": 527,
   "height": 120,
   "shapes": [
    {
-    "id": "shape:code-block-code-block-1-group",
-    "type": "group",
-    "index": "a1",
-    "x": 0,
-    "y": 0,
-    "rotation": 0,
-    "isLocked": false,
-    "opacity": 1,
-    "props": {},
-    "meta": {}
-   },
-   {
-    "id": "shape:code-block-code-block-1-bg",
-    "type": "razzle-path",
-    "index": "a1",
-    "x": 0,
-    "y": 0,
-    "rotation": 0,
-    "isLocked": false,
-    "opacity": 1,
-    "props": {
-     "fill": "#f3f3f3",
-     "stroke": "none",
-     "strokeWidth": 0,
-     "dash": "solid",
-     "richText": {
-      "type": "doc",
-      "content": [
-       {
-        "type": "paragraph"
-       }
-      ]
-     },
-     "font": "serif",
-     "fontSize": 19,
-     "labelColor": "#000000",
-     "align": "middle",
-     "verticalAlign": "middle",
-     "lineHeight": 1.3,
-     "padding": [
-      10,
-      10,
-      10,
-      10
-     ],
-     "w": 520,
-     "h": 152,
-     "path": "M 0 0 L 520 0 L 520 152 L 0 152 Z",
-     "viewW": 520,
-     "viewH": 152
-    },
-    "meta": {},
-    "parentId": "shape:code-block-code-block-1-group"
-   },
-   {
     "id": "shape:code-block-code-block-1",
-    "type": "text",
-    "index": "a2",
-    "x": 16,
-    "y": 12,
+    "type": "razzle-code",
+    "index": "a1",
+    "x": 0,
+    "y": 0,
     "rotation": 0,
     "isLocked": false,
     "opacity": 1,
     "props": {
-     "color": "grey",
-     "size": "s",
-     "font": "mono",
-     "textAlign": "start",
-     "w": 548.931,
-     "richText": {
-      "type": "doc",
-      "content": [
-       {
-        "type": "paragraph",
-        "content": [
-         {
-          "type": "text",
-          "text": "theorem zlib_decompress_compress"
-         }
-        ]
-       },
-       {
-        "type": "paragraph",
-        "content": [
-         {
-          "type": "text",
-          "text": "  (data : ByteArray) (level : UInt8)"
-         }
-        ]
-       },
-       {
-        "type": "paragraph",
-        "content": [
-         {
-          "type": "text",
-          "text": "  (hsize : data.size < 1024 * 1024 * 1024) :"
-         }
-        ]
-       },
-       {
-        "type": "paragraph",
-        "content": [
-         {
-          "type": "text",
-          "text": "  Zlib.decompress (Zlib.compress data level) = .ok data"
-         }
-        ]
-       }
-      ]
-     },
-     "scale": 0.889,
-     "autoSize": false
+     "w": 527,
+     "h": 120,
+     "code": "theorem zlib_decompress_compress\n  (data : ByteArray) (level : UInt8)\n  (hsize : data.size < 1024 * 1024 * 1024) :\n  Zlib.decompress (Zlib.compress data level) = .ok data",
+     "language": "lean",
+     "size": 15,
+     "background": true
     },
     "meta": {
-     "exact": {
-      "color": "#333333",
-      "of": "grey",
-      "lineHeight": 1.6
-     },
      "name": "code"
-    },
-    "parentId": "shape:code-block-code-block-1-group"
+    }
    }
   ]
  },

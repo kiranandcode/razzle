@@ -21,5 +21,6 @@ export const RAZZLE_ICONS: Record<string, string> = {
 	'rz-notes': svg('<path d="M8 4h10l5 5v17H8z"/><path d="M18 4v5h5"/><path d="M11.5 14h8M11.5 18h8M11.5 22h5"/>'),
 	'rz-step': svg('<path d="M5 24h6v-6h6v-6h6V6"/>'),
 	'rz-grip': svg('<circle cx="11" cy="9" r="1.2" fill="black"/><circle cx="19" cy="9" r="1.2" fill="black"/><circle cx="11" cy="15" r="1.2" fill="black"/><circle cx="19" cy="15" r="1.2" fill="black"/><circle cx="11" cy="21" r="1.2" fill="black"/><circle cx="19" cy="21" r="1.2" fill="black"/>'),
+	'rz-code': svg('<path d="M11 9l-6 6 6 6M19 9l6 6-6 6M17 6.5l-4 17"/>'),
 	'rz-decks': svg('<rect x="4" y="9" width="17" height="12" rx="1.5"/><path d="M8 6h17.5a.5.5 0 0 1 .5.5V18"/>'),
 }

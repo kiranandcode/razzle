@@ -508,5 +508,30 @@ export const stat = ({ x = 0, y = 0, w = 420, t = '105,823,818', sub = 'fuzzing 
   return els
 }
 
-export const code = ({ x = 0, y = 0, w = 420, lines = ['theorem zlib_decompress_compress', '  (data : ByteArray) :', '  decompress (compress data) = data'], size = T.code, hlColor = P.blue } = {}) =>
-  [text({ x, y, w, lines: lines.map(l => ({ t: l.length ? l : ' ' })), size, color: '#333333', font: F.mono, fill: P.code, lh: 1.6, inset: [12, 16, 12, 16], name: 'code' })]
+// Code block: a Razzle `code` element (converted to a highlighted `razzle-code` shape). Roboto Mono
+// on #f3f3f3, line height 1.6, padding 12/16 at 15px (scaled with the size). `w` defaults to the
+// width that fits the longest line; `h` to the height of the lines.
+export const CODE_LANGUAGES = ['c', 'python', 'lean', 'ocaml', 'js', 'ts', 'rust', 'bash', 'json', 'text']
+export const codePadding = (size) => ({ x: Math.round(size * 16 / 15), y: Math.round(size * 12 / 15) })
+export const code = ({ x = 0, y = 0, w, h, lines = ['theorem zlib_decompress_compress', '  (data : ByteArray) :', '  decompress (compress data) = data'], language = 'text', size = T.code, background = true, name, opacity } = {}) => {
+  const src = (Array.isArray(lines) ? lines : [lines]).map(l => String(l).replace(/\u00a0/g, ' ')).join('\n')
+  const rows = src.split('\n')
+  const pad = codePadding(size)
+  const fitW = Math.ceil(Math.max(1, ...rows.map(l => [...l].length)) * size * 0.6 + 2 * pad.x)
+  const el = {
+    type: 'code', id: nid(), left: r2(x), top: r2(y), width: r2(w ?? fitW), height: r2(h ?? Math.ceil(rows.length * size * 1.6 + 2 * pad.y)),
+    rotate: 0, code: src, language: CODE_LANGUAGES.includes(language) ? language : 'text', size, background,
+  }
+  if (name) el.name = name
+  if (opacity !== undefined) el.opacity = opacity
+  return [el]
+}
+
+// A translucent band over lines [from, to] (0-based) of a code element, for emphasis without
+// colouring the code. Put it behind the code: give the code `background: false` and put a
+// `codeBackground(codeEl)` under both.
+export const codeLineRect = (el, from, to = from, { fill = 'rgba(152,0,0,0.12)', bleed = 0 } = {}) => {
+  const lh = el.size * 1.6, pad = codePadding(el.size)
+  return rect({ x: el.left - bleed, y: el.top + pad.y + from * lh, w: el.width + 2 * bleed, h: (to - from + 1) * lh, fill })
+}
+export const codeBackground = (el) => rect({ x: el.left, y: el.top, w: el.width, h: el.height, fill: P.code })

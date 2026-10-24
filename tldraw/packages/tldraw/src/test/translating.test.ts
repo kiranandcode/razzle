@@ -15,7 +15,7 @@ import { vi } from 'vitest'
 import { getArrowBindings } from '../lib/shapes/arrow/shared'
 import { TranslatingInfo } from '../lib/tools/SelectTool/childStates/Translating'
 import { getSnapLines } from './getSnapLines'
-import { TestEditor } from './TestEditor'
+import { defaultHandleOverlays, TestEditor } from './TestEditor'
 
 let editor: TestEditor
 
@@ -44,6 +44,7 @@ const ids = {
 beforeEach(() => {
 	console.error = vi.fn()
 	editor = new TestEditor({
+		overlayUtils: defaultHandleOverlays,
 		options: {
 			adjacentShapeMargin: 20,
 			edgeScrollDelay: 0,
@@ -793,6 +794,70 @@ describe('snapping with multiple shapes', () => {
 		editor.select(ids.box1, ids.box2)
 		editor.pointerDown(50, 50, ids.box1).pointerMove(349, 50, { ctrlKey: true })
 		expect(editor.getShape(ids.box1)!).toMatchObject({ x: 300, y: 0 })
+	})
+})
+
+describe.each([false, true])('slide guides for a Shift-selection (grouped: %s)', (grouped) => {
+	let wasSnapMode: boolean
+	beforeEach(() => {
+		wasSnapMode = editor.user.getIsSnapMode()
+		editor.user.updateUserPreferences({ isSnapMode: true })
+		editor.createShapes([
+			{ id: ids.frame1, type: 'frame', x: 100, y: 80, props: { w: 1000, h: 600 } },
+			{ ...box(ids.box1, 100, 120, 80, 40), parentId: ids.frame1 },
+			{ ...box(ids.box2, 260, 200, 40, 80), parentId: ids.frame1 },
+		])
+		if (grouped) {
+			const groupId = createShapeId('slide-group')
+			editor.groupShapes([ids.box1, ids.box2], { groupId })
+			editor.setFocusedGroup(groupId)
+		}
+		editor.select(ids.box1)
+		editor.pointerDown(380, 320, ids.box2, { shiftKey: true }).pointerUp()
+		editor.keyUp('Shift')
+		expect(new Set(editor.getSelectedShapeIds())).toEqual(new Set([ids.box1, ids.box2]))
+		expect(editor.getSelectionPageBounds()).toMatchObject({ x: 200, y: 200, w: 200, h: 160 })
+	})
+	afterEach(() => editor.user.updateUserPreferences({ isSnapMode: wasSnapMode }))
+
+	it.each([
+		{ name: 'left', axis: 'x', guide: 100, x: 100, y: 200 },
+		{ name: 'horizontal centre', axis: 'x', guide: 600, x: 500, y: 200 },
+		{ name: 'right', axis: 'x', guide: 1100, x: 900, y: 200 },
+		{ name: 'top', axis: 'y', guide: 80, x: 200, y: 80 },
+		{ name: 'vertical centre', axis: 'y', guide: 380, x: 200, y: 300 },
+		{ name: 'bottom', axis: 'y', guide: 680, x: 200, y: 520 },
+	] as const)('snaps the combined bounds to the slide $name', ({ axis, guide, x, y }) => {
+		editor.pointerDown(240, 220, ids.box1)
+		editor.pointerMove(x + 40 + (axis === 'x' ? 1 : 0), y + 20 + (axis === 'y' ? 1 : 0))
+		expect(editor.getSelectionPageBounds()).toMatchObject({ x, y, w: 200, h: 160 })
+		expect(editor.snaps.getIndicators()).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: 'points',
+					points: expect.arrayContaining([expect.objectContaining({ [axis]: guide })]),
+				}),
+			])
+		)
+	})
+
+	it('does not snap an individual member centre to the slide centre', () => {
+		editor.pointerDown(240, 220, ids.box1).pointerMove(599, 220)
+		expect(editor.getSelectionPageBounds()).toMatchObject({ x: 559, y: 200, w: 200, h: 160 })
+		expect(editor.snaps.getIndicators()).toEqual([])
+	})
+
+	it('snaps the combined right edge to the slide centre when resizing', () => {
+		editor.pointerDownOnHandle('right').pointerMove(599, 280)
+		expect(editor.getSelectionPageBounds()).toMatchObject({ x: 200, w: 400 })
+		expect(editor.snaps.getIndicators()).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: 'points',
+					points: expect.arrayContaining([expect.objectContaining({ x: 600 })]),
+				}),
+			])
+		)
 	})
 })
 

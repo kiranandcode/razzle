@@ -18,7 +18,7 @@ export function escapeHtml(s: string): string {
 }
 
 /** Visible text of an element: a v2 slide-index element (`text` string, tldraw shape id),
- *  or a PPTist element (text boxes, shape text, table cells, chart labels, latex). */
+ *  or a PPTist element (text boxes, shape text, table cells, chart labels, latex, code). */
 export function elementText(el: Json): string {
   if (typeof el?.text === 'string') return el.text
   switch (el?.type) {
@@ -27,6 +27,7 @@ export function elementText(el: Json): string {
     case 'table': return (el.data ?? []).map((row: Json[]) => row.map(c => stripHtml(c?.text ?? '')).join(' | ')).join('\n')
     case 'chart': return [...(el.data?.labels ?? []), ...(el.data?.legends ?? [])].join(', ')
     case 'latex': return el.latex ?? ''
+    case 'code': return typeof el.code === 'string' ? el.code : ''
     default: return el?.name ?? ''
   }
 }
@@ -43,7 +44,9 @@ export function newId(n = 10): string {
   return s
 }
 
-const ELEMENT_TYPES = new Set(['text', 'image', 'shape', 'line', 'chart', 'table', 'latex', 'video', 'audio'])
+// PPTist's element types plus Razzle's `code` (a highlighted code block, shared/tl/convert.ts)
+const ELEMENT_TYPES = new Set(['text', 'image', 'shape', 'line', 'chart', 'table', 'latex', 'video', 'audio', 'code'])
+const CODE_LANGUAGES = new Set(['c', 'python', 'lean', 'ocaml', 'js', 'ts', 'rust', 'bash', 'json', 'text'])
 const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v)
 const pair = (v: unknown) => Array.isArray(v) && v.length === 2 && v.every(num)
 
@@ -105,6 +108,11 @@ export function validateSlide(s: unknown, canvas = { width: 1000, height: 562.5 
         break
       case 'latex':
         if (typeof el.latex !== 'string' || typeof el.path !== 'string' || !pair(el.viewBox)) errs.push(`${at} latex needs latex, path, viewBox`)
+        break
+      case 'code':
+        if (typeof el.code !== 'string') errs.push(`${at}.code must be a string (lines joined with \\n)`)
+        if (el.language !== undefined && !CODE_LANGUAGES.has(el.language)) errs.push(`${at}.language must be one of ${[...CODE_LANGUAGES].join('|')}`)
+        if (el.size !== undefined && !(num(el.size) && el.size > 0)) errs.push(`${at}.size must be a positive number`)
         break
       case 'chart':
         if (!el.data || !Array.isArray(el.data.labels) || !Array.isArray(el.data.series)) errs.push(`${at} chart needs data {labels, legends, series}`)

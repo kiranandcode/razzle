@@ -326,6 +326,49 @@ describe('FontManager', () => {
 	})
 
 	describe('toEmbeddedCssDeclaration', () => {
+		afterEach(() => vi.restoreAllMocks())
+
+		it('does not fetch fonts that are already embedded', async () => {
+			const fetchSpy = vi.spyOn(window, 'fetch')
+			const url = 'data:font/woff2;base64,Zm9udA=='
+			expect(
+				await fontManager.toEmbeddedCssDeclaration(createMockFont({ src: { url } }))
+			).toContain(url)
+			expect(fetchSpy).not.toHaveBeenCalled()
+		})
+
+		it('shares font bytes across repeated exports and face descriptors', async () => {
+			const font = createMockFont({ src: { url: 'https://example.com/cached-export.woff2' } })
+			const fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValue({
+				ok: true,
+				blob: async () => new Blob(['font'], { type: 'font/woff2' }),
+			} as Response)
+
+			const [regular, bold] = await Promise.all([
+				fontManager.toEmbeddedCssDeclaration(font),
+				fontManager.toEmbeddedCssDeclaration({ ...font, weight: '700' }),
+			])
+			expect(await fontManager.toEmbeddedCssDeclaration(font)).toBe(regular)
+			expect(regular).toContain('data:font/woff2;base64,')
+			expect(bold).toContain('font-weight: 700')
+			expect(fetchSpy).toHaveBeenCalledTimes(1)
+		})
+
+		it('retries font embedding after a failed download', async () => {
+			vi.spyOn(console, 'error').mockImplementation(() => {})
+			const font = createMockFont({ src: { url: 'https://example.com/retry-export.woff2' } })
+			const fetchSpy = vi
+				.spyOn(window, 'fetch')
+				.mockResolvedValueOnce({ ok: false } as Response)
+				.mockResolvedValue({ ok: true, blob: async () => new Blob(['font']) } as Response)
+
+			await expect(fontManager.toEmbeddedCssDeclaration(font)).rejects.toThrow(
+				'Could not embed font'
+			)
+			expect(await fontManager.toEmbeddedCssDeclaration(font)).toContain('base64,')
+			expect(fetchSpy).toHaveBeenCalledTimes(2)
+		})
+
 		it('should generate font CSS without data conversion (simplified test)', async () => {
 			const font = createMockFont()
 

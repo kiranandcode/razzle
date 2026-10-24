@@ -1,7 +1,8 @@
 // PPTX export (Google Slides import is the main consumer).
 //
 // 16:9, 10in × 5.625in: the slide's 1000 canvas px are 10in. Text, plain geo shapes and
-// straight lines/arrows become native, editable PowerPoint objects; every other shape
+// straight lines/arrows become native, editable PowerPoint objects (code blocks too: a text
+// box with one coloured run per token); every other shape
 // becomes a PNG of that shape alone, placed at its box. PPTX animations are not written
 // (pptxgenjs has no animation support), so by default every build step is its own slide
 // with the step's build opacities applied.
@@ -22,11 +23,14 @@ import {
 	getDisplayValues,
 } from 'tldraw'
 import type { Deck } from '../model/types'
+import { SLIDE_NUMBER } from '../model/SlideNumbers'
 import { blendHex, cssToRgba, transparencyOf } from './color'
 import { downloadBlob, fileStem } from './download'
 import { SlidePlan, applyStep, effectiveOpacity, planSlides, withExportEditor } from './exportEditor'
 import { slideNotes, stepNotes } from './notes'
 import { RunStyle, richTextIsEmpty, richTextToRuns } from './richText'
+import { CODE_COLORS, tokens } from '../shapes/codeHighlight'
+import { CODE_LINE_HEIGHT, RAZZLE_CODE_TYPE, codePadding, type RazzleCodeShape } from '../shapes/razzleCodeSchema'
 
 export interface PptxExportOptions {
 	/** 'expand' (default): one slide per build step. 'final': one slide per slide, finished. */
@@ -142,6 +146,14 @@ class SlideWriter {
 		this.toSlide = this.ed.getShapePageTransform(frame.id)!.clone().invert()
 		this.frameBox = this.ed.getShapePageBounds(frame.id)!.clone()
 		await this.writeChildren(slide, frame.id)
+		const { inset, size, color, font } = SLIDE_NUMBER
+		slide.addText(String(plan.index + 1), {
+			x: this.inch(frame.props.w - inset - 60),
+			y: this.inch(frame.props.h - inset - size),
+			w: this.inch(60), h: this.inch(size * 1.2),
+			fontFace: font, fontSize: this.pt(size), color: color.slice(1),
+			align: 'right', margin: 0, breakLine: false,
+		})
 	}
 
 	private async writeChildren(slide: PptxGenJS.Slide, parent: TLShapeId) {
@@ -155,6 +167,10 @@ class SlideWriter {
 			const alpha = effectiveOpacity(this.ed, shape)
 			if (alpha <= 0.001) continue
 			try {
+				if (shape.type === RAZZLE_CODE_TYPE && (await this.writeCode(slide, shape as RazzleCodeShape, alpha))) {
+					this.count('native', shape.type)
+					continue
+				}
 				if (this.writeNative(slide, shape, alpha)) {
 					this.count('native', shape.type)
 					continue
@@ -258,6 +274,54 @@ class SlideWriter {
 			fit: 'none',
 			isTextBox: true,
 			objectName: `text ${shape.id}`,
+		})
+		return true
+	}
+
+	/** A code block: a text box with one run per highlighted token, on the code background. */
+	private async writeCode(slide: PptxGenJS.Slide, shape: RazzleCodeShape, alpha: number): Promise<boolean> {
+		const p = shape.props
+		const lines = await tokens(p.code, p.language)
+		const under = p.background ? blendHex(CODE_COLORS.background.slice(1), this.bg, alpha) : this.bg
+		const color = (css: string) => {
+			const c = cssToRgba(css)
+			return c ? blendHex(c.hex, under, c.alpha * alpha) : '333333'
+		}
+		const base = {
+			fontFace: this.fontFace('mono'),
+			fontSize: round2(this.pt(p.size)),
+			lineSpacing: round2(this.pt(p.size * CODE_LINE_HEIGHT)),
+			align: 'left' as const,
+		}
+		const runs: PptxGenJS.TextProps[] = []
+		lines.forEach((line, i) => {
+			const last = i === lines.length - 1
+			const toks = line.length ? line : [{ text: '', color: CODE_COLORS.text, italic: false, bold: false }]
+			toks.forEach((t, j) => {
+				runs.push({
+					text: t.text,
+					options: {
+						...base,
+						color: color(t.color),
+						...(t.italic ? { italic: true } : {}),
+						...(t.bold ? { bold: true } : {}),
+						...(j === toks.length - 1 && !last ? { breakLine: true } : {}),
+					},
+				})
+			})
+		})
+		const pad = codePadding(p.size)
+		const fc = cssToRgba(CODE_COLORS.background)!
+		slide.addText(runs, {
+			...this.pos(this.placed(shape)),
+			// pptxgenjs reads a margin array as [left, right, bottom, top]
+			margin: [this.pt(pad.x), this.pt(pad.x), this.pt(pad.y), this.pt(pad.y)].map(round2) as [number, number, number, number],
+			valign: 'top',
+			wrap: false,
+			fit: 'none',
+			isTextBox: true,
+			...(p.background ? { fill: { color: fc.hex, ...(alpha < 1 ? { transparency: transparencyOf(alpha) } : {}) } } : {}),
+			objectName: `code ${shape.id}`,
 		})
 		return true
 	}

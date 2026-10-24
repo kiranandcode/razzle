@@ -110,7 +110,15 @@ function renderLine(el) {
     </svg></div>`
 }
 
+// Code element: plain Roboto Mono text (the studio highlights it; this preview does not).
+function renderCode(el) {
+  const size = el.size || 15
+  const px = Math.round(size * 16 / 15), py = Math.round(size * 12 / 15)
+  return `<div class="el" style="left:${el.left}px;top:${el.top}px;width:${el.width}px;height:${el.height}px;transform:rotate(${el.rotate || 0}deg);overflow:hidden;box-sizing:border-box;padding:${py}px ${px}px;background:${el.background === false ? 'transparent' : '#f3f3f3'};opacity:${el.opacity ?? 1};font-family:'Roboto Mono',monospace;font-size:${size}px;line-height:1.6;color:#333333;white-space:pre">${esc(el.code ?? '')}</div>`
+}
+
 function renderEl(el, theme) {
+  if (el.type === 'code') return renderCode(el)
   if (el.type === 'shape') return renderShape(el, theme)
   if (el.type === 'text') return renderText(el)
   if (el.type === 'line') return renderLine(el)

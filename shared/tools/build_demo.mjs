@@ -8,7 +8,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   P, F, T, L, scope, nid, text, run, para, line, box, agent, humanNode, network, polygonPoints, EDGES, FADE_NODE,
-  highlightRegion, docFrame, bubble, pendingBox, title, annotation, move, normalise, group,
+  highlightRegion, docFrame, bubble, pendingBox, title, annotation, move, normalise, group, code, codeLineRect, codeBackground,
 } from './kit.mjs'
 import { GLYPHS } from './glyphs.mjs'
 import { convertDeck } from '../tl/convert.ts'
@@ -304,23 +304,21 @@ const slides = []
 {
   const s = slide('backup-overflow')
   s.add(ttl('Heap buffer overflow in the Lean runtime'))
-  const kw = (t) => run(t, { color: P.blue })
-  const c = (t) => run(t)
-  const red = (t) => run(t, { color: P.bug })
-  s.add(text({
-    x: 200, y: 128, w: 600, size: T.code, color: '#333333', font: F.mono, fill: P.code, lh: 1.6, inset: [16, 20, 16, 20],
-    lines: ['', '', '', '', '', '', '', ''],
-    html: [
-      run('// src/include/lean/lean.h', { color: '#999999' }),
-      kw('static inline') + c(' lean_obj_res ') + run('lean_alloc_sarray', { color: P.stat }) + c('('),
-      c('    unsigned elem_size, size_t size, size_t capacity) {'),
-      c('  lean_sarray_object * o = (lean_sarray_object*)'),
-      c('    lean_alloc_object(sizeof(lean_sarray_object)'),
-      red('                      + elem_size * capacity);'),
-      c('  ...'),
-      c('}'),
-    ].map(h => para(h)).join(''),
+  const [src] = s.add(code({
+    x: 200, y: 128, w: 600, language: 'c', background: false,
+    lines: [
+      '// src/include/lean/lean.h',
+      'static inline lean_obj_res lean_alloc_sarray(',
+      '    unsigned elem_size, size_t size, size_t capacity) {',
+      '  lean_sarray_object * o = (lean_sarray_object*)',
+      '    lean_alloc_object(sizeof(lean_sarray_object)',
+      '                      + elem_size * capacity);',
+      '  ...',
+      '}',
+    ],
   }))
+  // the faulty line on a dark-red band, behind the code
+  s.els.splice(s.els.indexOf(src), 0, codeBackground(src), codeLineRect(src, 5))
   s.add(annotation({ x: 340, y: 372, w: 460, t: 'integer overflow when capacity is near SIZE_MAX', color: P.bug, size: 17, align: 'right' }))
   s.add(text({ x: 190, y: 440, w: 560, lines: ['Affects every version of Lean 4.'], size: 20, color: P.body }))
   s.razzle.hidden = true

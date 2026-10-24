@@ -10,7 +10,8 @@
 // Mapping: shape → razzle-path (exact path, fill, stroke, label); text → tldraw text
 // (rich text, nearest palette colour + exact colour/line height in meta.exact); line →
 // tldraw line (or arrow when it has arrowheads or curves); image → image + asset;
-// latex → razzle-path; groupId → group; animations → meta.build.
+// latex → razzle-path; code → razzle-code (highlighted in the studio); groupId → group;
+// animations → meta.build.
 import { parsePath, mapPath, serializePath, pathBounds } from '../../tldraw/apps/razzle/src/shapes/svgPath.ts'
 import { parseHtml, plainText, toRichText, type Para, type Run } from './html.ts'
 import {
@@ -19,7 +20,7 @@ import {
 } from './palette.ts'
 import {
 	DOCUMENT_ID, PAGE_ID, indexBetween, indicesAfter, makeArrow, makeDocument, makeFrame, makeGroup,
-	makeImage, makeImageAsset, makeLine, makePage, makeRazzlePath, makeText, safeIdPart, snapshotOf,
+	makeImage, makeImageAsset, makeLine, makePage, makeRazzleCode, makeRazzlePath, makeText, safeIdPart, snapshotOf,
 	type Arrowhead, type Json, type ShapeRecord, type StoreSnapshot, type StrokeStyle, type TLRecord,
 } from './records.ts'
 
@@ -110,6 +111,7 @@ export function pptElementText(el: Json): string {
 	if (el?.type === 'text') return plainText(parseHtml(el.content ?? '')).replace(/\u00a0/g, ' ').trim()
 	if (el?.type === 'shape' && el.text?.content) return plainText(parseHtml(el.text.content)).replace(/\u00a0/g, ' ').trim()
 	if (el?.type === 'latex') return el.latex ?? ''
+	if (el?.type === 'code') return String(el.code ?? '')
 	if (el?.type === 'table') return (el.data ?? []).map((row: Json[]) => row.map((c) => plainText(parseHtml(c?.text ?? ''))).join(' | ')).join('\n')
 	if (el?.type === 'chart') return [...(el.data?.labels ?? []), ...(el.data?.legends ?? [])].join(', ')
 	return ''
@@ -380,6 +382,18 @@ function emitLatex(el: Json, ctx: Ctx): Emitted {
 	return { shapes: [rec], assets: [], index: [indexEntry(id, 'razzle-path', el.latex ?? '', el)] }
 }
 
+/** A Razzle code element {type:'code', code, language, size, background?} → razzle-code. */
+function emitCode(el: Json, ctx: Ctx): Emitted {
+	const { x, y, rotation } = placeRotated(el, num(el.left), num(el.top))
+	const id = uid(ctx, el.id)
+	const code = String(el.code ?? '').replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n')
+	const rec = makeRazzleCode(shapeBase(id, x, y, rotation, num(el.opacity, 1), el.name ? { name: el.name } : {}), {
+		w: num(el.width, 1), h: num(el.height, 1), code, language: el.language ?? 'text',
+		size: num(el.size, 15), background: el.background !== false,
+	})
+	return { shapes: [rec], assets: [], index: [indexEntry(id, 'razzle-code', code, el)] }
+}
+
 function indexEntry(id: string, type: string, text: string, el: Json, box?: { left: number, top: number, width: number, height: number }): SlideElement {
 	const b = box ?? { left: num(el.left), top: num(el.top), width: num(el.width), height: num(el.height) }
 	return { id, type, text, left: r3(b.left), top: r3(b.top), width: r3(b.width), height: r3(b.height), rotate: num(el.rotate) }
@@ -605,6 +619,7 @@ function emitElement(el: Json, ctx: Ctx): Emitted {
 		case 'line': return emitLine(el, ctx)
 		case 'image': return emitImage(el, ctx)
 		case 'latex': return emitLatex(el, ctx)
+		case 'code': return emitCode(el, ctx)
 		default: return emitPlaceholder(el, ctx)
 	}
 }

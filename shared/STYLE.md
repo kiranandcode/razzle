@@ -121,8 +121,11 @@ Google Fonts. Use these exact family names in `defaultFontName` and `font-family
 - Numbers: one big number centred, a gray line under it, the punchline number in dark red.
 - Results: large cut-corner panels (`#dcf0f2` with teal text; `#eeeeee` with black heading
   and bold-italic gray verdict).
-- Code: Roboto Mono 15 on `#f3f3f3`, keywords `#4285f4`, the faulty line `#980000`; keep
-  indentation with no-break spaces (PPTist collapses ordinary spaces).
+- Code: a `code` element (`kit.code({lines, language})`), Roboto Mono 15 on `#f3f3f3`,
+  highlighted in the studio: text `#333333`, keywords and types `#4285f4`, strings `#0097a7`,
+  numbers and constants `#b85c39`, comments `#999999` italic, function names `#000000`. Mark the
+  faulty line with a translucent dark-red band behind it (`codeLineRect`, with
+  `codeBackground` under both and `background: false` on the code), not by recolouring it.
 
 ## Annotations
 

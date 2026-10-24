@@ -1,6 +1,6 @@
 // Slide operations on the canvas: where a new slide goes, navigating, reordering by swapping
 // canvas positions (reading order = position), duplicate, delete, hide.
-import { Editor, TLFrameShape, TLShape, TLShapeId, createShapeId, toRichText } from 'tldraw'
+import { Editor, TLFrameShape, TLShape, TLShapeId, createShapeId, isShapeId, toRichText } from 'tldraw'
 import { getSlides, slideMeta } from '../model/slides'
 import { RazzleSlideMeta, SLIDE_H, SLIDE_W } from '../model/types'
 import { $focusSlide } from './state'
@@ -83,6 +83,9 @@ export function zoomToSlide(editor: Editor, frame: TLFrameShape | TLShapeId, ani
 	const id = typeof frame === 'string' ? frame : frame.id
 	const b = editor.getShapePageBounds(id)
 	if (!b) return
+	if (editor.getSelectedShapes().some((shape) => slideOf(editor, shape)?.id !== id)) editor.selectNone()
+	const focusedGroup = editor.getFocusedGroupId()
+	if (isShapeId(focusedGroup) && slideOf(editor, focusedGroup)?.id !== id) editor.setFocusedGroup(null)
 	$focusSlide.set(id)
 	editor.stopCameraAnimation()
 	editor.zoomToBounds(b, { inset: 56, animation: animate ? { duration: 140 } : undefined })
@@ -92,15 +95,25 @@ export function slideNumberLabel(index: number) {
 	return String(index + 1)
 }
 
-/** Make a new slide at the next reading position, with a title text. Returns its id. */
+/** Insert a slide after the current slide, or at an explicit canvas position. */
 export function addSlide(editor: Editor, opts: { title?: string; at?: { x: number; y: number } } = {}): TLShapeId {
 	const id = createShapeId()
-	const pos = opts.at ?? nextSlidePosition(editor)
-	const n = getSlides(editor).length + 1
+	const slides = getSlides(editor)
+	const current = currentSlide(editor)
+	const insertAt = current ? slides.findIndex((s) => s.id === current.id) + 1 : slides.length
+	const positions = [...slides.map((s) => ({ x: s.x, y: s.y })), nextSlidePosition(editor)]
+	const pos = opts.at ?? positions[insertAt]
+	const n = opts.at ? slides.length + 1 : insertAt + 1
 	editor.run(() => {
+		if (!opts.at) {
+			editor.updateShapes(slides.slice(insertAt).map((s, i) => ({
+				id: s.id, type: 'frame' as const, ...positions[insertAt + i + 1],
+			})))
+		}
 		editor.createShape<TLFrameShape>({
 			id,
 			type: 'frame',
+			parentId: editor.getCurrentPageId(),
 			x: pos.x,
 			y: pos.y,
 			props: { w: SLIDE_W, h: SLIDE_H, name: opts.title ?? `Slide ${n}` },
@@ -112,7 +125,8 @@ export function addSlide(editor: Editor, opts: { title?: string; at?: { x: numbe
 			y: 22,
 			props: { richText: toRichText(opts.title ?? 'Title'), size: 'l', font: 'serif', color: 'black', textAlign: 'start' },
 		})
-	})
+		editor.selectNone()
+	}, { ignoreShapeLock: true })
 	return id
 }
 

@@ -12,8 +12,13 @@ export class SlideThumbnails {
 	private running = false
 	private disposed = false
 	private unlisten: () => void
+	private nextRunAt = 0
+	private onInput = () => {
+		if (this.dirty.size) this.schedule()
+	}
 
 	constructor(private editor: Editor) {
+		editor.on('event', this.onInput)
 		for (const s of getSlides(editor)) this.dirty.add(s.id)
 		this.unlisten = editor.store.listen(
 			({ changes }) => {
@@ -27,7 +32,12 @@ export class SlideThumbnails {
 				Object.values(changes.added).forEach(touch)
 				Object.values(changes.updated).forEach(([from, to]) => {
 					// A slide that only moved keeps its picture.
-					if (from.typeName === 'shape' && (from as TLShape).type === 'frame' && onlyMoved(from as TLShape, to as TLShape)) return
+					if (
+						from.typeName === 'shape' &&
+						(from as TLShape).type === 'frame' &&
+						onlyMoved(from as TLShape, to as TLShape)
+					)
+						return
 					touch(from)
 					touch(to)
 				})
@@ -41,6 +51,7 @@ export class SlideThumbnails {
 
 	private schedule(ms = 450) {
 		clearTimeout(this.timer)
+		this.nextRunAt = Date.now() + ms
 		this.timer = setTimeout(() => void this.run(), ms)
 	}
 
@@ -49,6 +60,13 @@ export class SlideThumbnails {
 		this.running = true
 		try {
 			while (this.dirty.size && !this.disposed) {
+				// An export already in flight must not drain the queue through a new edit or drag.
+				if (
+					Date.now() < this.nextRunAt ||
+					this.editor.getEditingShapeId() ||
+					this.editor.inputs.getIsPointing()
+				)
+					break
 				const [id] = this.dirty
 				this.dirty.delete(id)
 				const urls = { ...this.$urls.get() }
@@ -88,10 +106,13 @@ export class SlideThumbnails {
 		this.disposed = true
 		clearTimeout(this.timer)
 		this.unlisten()
+		this.editor.off('event', this.onInput)
 		Object.values(this.$urls.get()).forEach((u) => URL.revokeObjectURL(u))
 	}
 }
 
 function onlyMoved(a: TLShape, b: TLShape) {
-	return a.props === b.props && a.meta === b.meta && a.opacity === b.opacity && a.rotation === b.rotation
+	return (
+		a.props === b.props && a.meta === b.meta && a.opacity === b.opacity && a.rotation === b.rotation
+	)
 }
