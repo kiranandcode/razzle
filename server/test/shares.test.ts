@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
@@ -63,7 +63,9 @@ test('public reads require a published token; publication and removal require au
     assert.ok(ready, logs)
     const deck = convertDeck(demo)
     assert.equal((await api('/api/shares', 'POST', deck)).status, 401)
-    const created = await api('/api/shares', 'POST', deck, true)
+    assert.equal((await api('/api/shares', 'POST', { deckId: deck.id }, true)).status, 400)
+    await writeFile(path.join(dir, deck.id + '.json'), JSON.stringify(deck))
+    const created = await api('/api/shares', 'POST', { deckId: deck.id }, true)
     assert.equal(created.status, 201)
     const meta = await created.json() as any
     assert.match(meta.id, /^[A-Za-z0-9_-]{24}$/)
@@ -80,15 +82,31 @@ test('public reads require a published token; publication and removal require au
     assert.equal((await api(route, 'PUT', deck)).status, 401)
     deck.title = 'Changed original'
     await writeFile(path.join(dir, deck.id + '.json'), JSON.stringify(deck))
-    assert.equal((await (await api(route)).json() as any).title, snapshot.title)
+    assert.equal((await (await api(route)).json() as any).title, 'Changed original')
+    const oldId = 'a'.repeat(24)
+    await mkdir(path.join(dir, 'shares', oldId))
+    await writeFile(path.join(dir, 'shares', oldId, 'meta.json'), JSON.stringify({ ...meta, id: oldId }))
+    await writeFile(path.join(dir, 'shares', oldId, 'deck.json'), JSON.stringify(snapshot))
+    assert.equal((await (await api('/api/shared/' + oldId)).json() as any).title, 'Changed original')
+    const first = deck.slides[0].id
+    ;(deck.document.store[first] as any).meta.razzle = { hidden: true, notes: 'NEW PRIVATE NOTES' }
+    await writeFile(path.join(dir, deck.id + '.json'), JSON.stringify(deck))
+    const updated = await (await api(route)).json() as any
+    assert.ok(!updated.document.store[first])
+    assert.ok(!JSON.stringify(updated).includes('NEW PRIVATE NOTES'))
+    assert.equal(updated.slides.length, snapshot.slides.length - 1)
     const listing = await (await api('/api/shares?deck=' + deck.id, 'GET', undefined, true)).json() as any[]
-    assert.equal(listing[0].id, meta.id)
+    assert.ok(listing.some(s => s.id === meta.id))
     assert.equal((await api('/api/shares/' + meta.id, 'DELETE')).status, 401)
     assert.equal((await api('/api/shares/' + meta.id, 'DELETE', undefined, true)).status, 200)
     assert.equal((await api(route)).status, 404)
+    await rm(path.join(dir, deck.id + '.json'))
+    assert.equal((await api('/api/shared/' + oldId)).status, 404, 'deleted deck never falls back to frozen content')
     const allHidden = convertDeck(demo)
     for (const s of allHidden.slides) (allHidden.document.store[s.id] as any).meta.razzle = { hidden: true }
+    await writeFile(path.join(dir, allHidden.id + '.json'), JSON.stringify(allHidden))
     assert.equal((await api('/api/shares', 'POST', allHidden, true)).status, 400)
+    assert.equal((await api('/api/shared/' + oldId)).status, 404, 'all-hidden deck never falls back to frozen content')
   } finally {
     const exited = once(child, 'exit')
     child.kill('SIGTERM')

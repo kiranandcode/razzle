@@ -19,8 +19,8 @@ export interface PublishedShare {
 
 export const listShares = (deckId: string) =>
 	api(`/shares?deck=${encodeURIComponent(deckId)}`).then((r) => json<PublishedShare[]>(r))
-export const publishShare = (deck: Deck) =>
-	api('/shares', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(deck) })
+export const publishShare = (deckId: string) =>
+	api('/shares', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deckId }) })
 		.then((r) => json<PublishedShare>(r))
 export const removeShare = (id: string) =>
 	api(`/shares/${encodeURIComponent(id)}`, { method: 'DELETE' }).then((r) => json<{ ok: boolean }>(r))

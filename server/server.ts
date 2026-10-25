@@ -27,7 +27,7 @@ import {
   type Workflow, type Mode, type NavRequest, type PresState, type AgentStatus, type NavSource,
 } from './state.ts'
 import { deliveryPatches } from './delivery.ts'
-import { publishShare, listShares, SHARE_ID } from './shares.ts'
+import { publishShare, listShares, readShare, SHARE_ID } from './shares.ts'
 import { codexJSON } from './codex.ts'
 import { noteItems, notePatches, noteBaseline, NOTES_PROMPT, NOTES_SCHEMA, type Utterance, type Take } from './notes.ts'
 import { escapeHtml, expandLibraryRefs, libraryEntries, validateSlide, newId, type Json } from './slides.ts'
@@ -604,7 +604,13 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   const deckMatch = p.match(/^\/api\/decks\/([^/]+)(?:\/(takes|notes|slides|speech))?$/)
 
   if (p === '/api/shares' && m === 'POST') {
-    try { return json(res, 201, await publishShare(SHARES, await body(req))) }
+    try {
+      const input = await body(req)
+      // Accept older studio clients that sent the whole deck, but publish saved content only.
+      const id = input?.deckId ?? input?.id
+      if (typeof id !== 'string' || !validId(id)) return json(res, 400, { error: 'A saved deck is required' })
+      return json(res, 201, await publishShare(SHARES, await readDeck(id)))
+    }
     catch (e) { return json(res, 400, { error: (e as Error).message }) }
   }
   if (p === '/api/shares' && m === 'GET') return json(res, 200, await listShares(SHARES, url.searchParams.get('deck') ?? ''))
@@ -734,14 +740,13 @@ const auth = process.env.RAZZLE_HTPASSWD
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://x')
   try {
-    // Only published snapshots bypass sign-in; editing, discovery and AI remain private.
+    // Only published audience copies bypass sign-in; editing, discovery and AI remain private.
     const shared = url.pathname.match(/^\/api\/shared\/([A-Za-z0-9_-]+)$/)?.[1]
     if (shared && SHARE_ID.test(shared) && (req.method === 'GET' || req.method === 'HEAD')) {
-      const file = path.join(SHARES, shared, 'deck.json')
-      const data = await (req.method === 'HEAD' ? fsp.stat(file) : fsp.readFile(file)).catch(() => null)
+      const data = await readShare(SHARES, shared, readDeck)
       if (!data) return json(res, 404, { error: 'This presentation was removed or the link is incorrect.' })
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-robots-tag': 'noindex' })
-      res.end(Buffer.isBuffer(data) ? data : undefined)
+      res.end(req.method === 'HEAD' ? undefined : data)
       return
     }
     if (auth && !await auth.gate(req, res, url.pathname)) return

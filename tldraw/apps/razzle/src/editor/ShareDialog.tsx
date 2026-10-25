@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { type Editor, useDialogs, useEditor, useToasts, TldrawUiDialogHeader, TldrawUiDialogTitle, TldrawUiDialogCloseButton, TldrawUiDialogBody } from 'tldraw'
+import { useDialogs, useEditor, useToasts, TldrawUiDialogHeader, TldrawUiDialogTitle, TldrawUiDialogCloseButton, TldrawUiDialogBody } from 'tldraw'
 import { PUBLIC } from '../model/base'
 import { listShares, publishShare, removeShare, type PublishedShare } from '../model/deck'
 import type { DeckSync } from '../model/persist'
 import { publishedShareUrl } from '../model/share'
 import type { Deck } from '../model/types'
-import { copyShareLink, deckFromEditor, shareDeck } from './sharing'
+import { copyShareLink, shareDeck } from './sharing'
 
 import { useStudio } from './context'
 import { studioHooks } from './ui'
@@ -18,7 +18,7 @@ export function useSharePresentation() {
 	const [busy, setBusy] = useState(false)
 	const share = useCallback(async () => {
 		if (!PUBLIC) {
-			addDialog({ id: 'share-presentation', component: () => <ShareDialog editor={editor} deck={deck} sync={sync} /> })
+			addDialog({ id: 'share-presentation', component: () => <ShareDialog deck={deck} sync={sync} /> })
 			return
 		}
 		setBusy(true)
@@ -37,7 +37,7 @@ export function ShareActionBridge() {
 	return null
 }
 
-function ShareDialog({ editor, deck, sync }: { editor: Editor; deck: Deck; sync: DeckSync | null }) {
+function ShareDialog({ deck, sync }: { deck: Deck; sync: DeckSync | null }) {
 	const [shares, setShares] = useState<PublishedShare[]>([])
 	const [busy, setBusy] = useState(true)
 	const [message, setMessage] = useState('')
@@ -59,10 +59,11 @@ function ShareDialog({ editor, deck, sync }: { editor: Editor; deck: Deck; sync:
 		<TldrawUiDialogBody>
 			<div className="rz-share-dialog">
 				<p>Anyone with the link can view the slides. No login or AI. Speaker notes and hidden slides are excluded.</p>
-				<p>Each link keeps this version. Create a new link after editing.</p>
+				<p>Saved changes appear at the same link. Viewers can refresh to see updates.</p>
 				<button className="rz-btn" disabled={busy} onClick={() => void run(async () => {
 					await sync?.flush()
-					const item = await publishShare(deckFromEditor(editor, deck, sync?.$title.get() ?? deck.title))
+					if (sync && sync.$status.get() !== 'saved') throw new Error('Wait until the deck is saved to the server before sharing.')
+					const item = await publishShare(deck.id)
 					setShares((items) => [item, ...items])
 					await copy(item.id)
 				})}>{busy ? 'Please wait…' : 'Create public link'}</button>
