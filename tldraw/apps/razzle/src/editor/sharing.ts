@@ -8,7 +8,7 @@ type Toast = (t: { title: string; description?: string; severity?: 'success' | '
 
 const size = (n: number) => (n < 1000 ? `${n} bytes` : n < 1_000_000 ? `${Math.round(n / 100) / 10} KB` : `${Math.round(n / 100_000) / 10} MB`)
 
-async function copy(text: string): Promise<boolean> {
+export async function copyShareLink(text: string): Promise<boolean> {
 	try {
 		await navigator.clipboard.writeText(text)
 		return true
@@ -49,13 +49,13 @@ export async function shareDeck(editor: Editor, deck: Deck, title: string, flush
 			})
 			return null
 		}
-		const copied = await copy(url)
+		const copied = await copyShareLink(url)
 		const big = url.length > LINK_WARN_BYTES
 		toast({
 			title: copied ? `Link copied (${size(url.length)})` : `Could not copy the link (${size(url.length)})`,
 			description: big
 				? 'Some chat apps cut links this long; images make a deck large. A PowerPoint or reveal.js export (main menu) travels better.'
-				: 'Anyone with the link can view the talk; the deck is inside the link, not on a server.',
+				: 'Anyone with the link can view these slides. Speaker notes and hidden slides are excluded.',
 			severity: copied ? (big ? 'warning' : 'success') : 'error',
 		})
 		return url

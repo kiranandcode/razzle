@@ -10,6 +10,21 @@ export interface DeckSummary {
 	slideCount: number
 }
 
+export interface PublishedShare {
+	id: string
+	deckId: string
+	title: string
+	createdAt: number
+}
+
+export const listShares = (deckId: string) =>
+	api(`/shares?deck=${encodeURIComponent(deckId)}`).then((r) => json<PublishedShare[]>(r))
+export const publishShare = (deck: Deck) =>
+	api('/shares', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(deck) })
+		.then((r) => json<PublishedShare>(r))
+export const removeShare = (id: string) =>
+	api(`/shares/${encodeURIComponent(id)}`, { method: 'DELETE' }).then((r) => json<{ ok: boolean }>(r))
+
 /** Thrown for a 409: the server holds a newer version than the one these edits build on. */
 export class StaleDeckError extends Error {}
 

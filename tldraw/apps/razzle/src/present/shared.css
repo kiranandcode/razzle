@@ -1,26 +1,17 @@
-/* A shared talk (SharedView.tsx): the audience view plus one quiet button. */
-.rz-open-in {
-	position: absolute;
-	right: 16px;
-	bottom: 16px;
-	z-index: 10;
-	height: 30px;
-	padding: 0 12px;
-	border: 1px solid rgba(255, 255, 255, 0.18);
-	border-radius: 6px;
-	background: rgba(18, 19, 21, 0.72);
-	color: #e9e6df;
-	font: 12px 'Inter', sans-serif;
-	cursor: pointer;
-	opacity: 0;
-	pointer-events: none;
-	transition: opacity 0.25s;
+.rz-shared .rz-audience { bottom: 56px; }
+.rz-share-toolbar {
+	position: absolute; inset: auto 0 0; min-height: 56px; box-sizing: border-box;
+	display: flex; align-items: center; justify-content: center; gap: 10px; padding: 8px 16px;
+	background: #121315; color: #e9e6df; font: 13px Inter, sans-serif; z-index: 10;
 }
-.rz-open-in[data-awake='true'] {
-	opacity: 1;
-	pointer-events: auto;
-}
-.rz-open-in:hover {
-	background: rgba(18, 19, 21, 0.92);
-	border-color: rgba(255, 255, 255, 0.35);
+.rz-share-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rz-share-toolbar button { border: 1px solid #ffffff30; border-radius: 6px; background: transparent; color: inherit; padding: 8px 12px; font: inherit; cursor: pointer; }
+.rz-share-toolbar button:hover { background: #ffffff16; }
+.rz-share-toolbar button:disabled { opacity: .35; cursor: default; }
+.rz-share-toolbar button:focus-visible { outline: 2px solid #a6c9ff; outline-offset: 2px; }
+@media (max-width: 640px) {
+	.rz-share-toolbar { flex-wrap: wrap; gap: 6px; min-height: 96px; padding: 8px; }
+	.rz-share-title { flex-basis: 100%; text-align: center; }
+	.rz-share-toolbar button { padding: 6px 8px; }
+	.rz-shared .rz-audience { bottom: 96px; }
 }

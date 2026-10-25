@@ -7,6 +7,7 @@
 // viewer needs only each slide's id, hidden flag and step count). The viewer (src/present/
 // SharedView.tsx) decodes the link and presents it in that one window.
 import { DECK_FORMAT, type Deck, type SlideIndex } from './types'
+import { audienceSnapshot } from '../../../../../shared/tl/audience'
 
 /** Links longer than this are cut by some chat apps. */
 export const LINK_WARN_BYTES = 60_000
@@ -28,8 +29,7 @@ export function sharedDeckOf(deck: Deck): SharedDeck {
 		title: deck.title,
 		width: deck.width,
 		height: deck.height,
-		document: deck.document,
-		slides: deck.slides.map((s) => ({ ...s, elements: [] })),
+		...audienceSnapshot(deck.document, deck.slides),
 	}
 }
 
@@ -68,6 +68,10 @@ export async function decodeDeck(data: string): Promise<SharedDeck> {
 	} catch {
 		throw new BadLinkError('the link is incomplete or garbled')
 	}
+	return readSharedDeck(deck)
+}
+
+function readSharedDeck(deck: any): SharedDeck {
 	if (!deck || typeof deck !== 'object' || deck.format !== DECK_FORMAT) throw new BadLinkError('the link holds no Razzle deck')
 	const doc = deck.document
 	if (!doc || typeof doc !== 'object' || typeof doc.store !== 'object' || typeof doc.schema !== 'object' || !Array.isArray(deck.slides))
@@ -86,3 +90,16 @@ export async function decodeDeck(data: string): Promise<SharedDeck> {
 
 /** The public site's root (a link made behind /private/ still points at the public studio). */
 export const shareUrl = (data: string) => `${location.origin}/#/view?d=${data}`
+
+export const publishedShareUrl = (id: string) => `${location.origin}/#/view?s=${encodeURIComponent(id)}`
+
+export async function loadSharedDeck(query: string, signal?: AbortSignal): Promise<SharedDeck> {
+	const params = new URLSearchParams(query)
+	const id = params.get('s')
+	if (id === null) return decodeDeck(params.get('d') ?? '')
+	if (!/^[A-Za-z0-9_-]{24}$/.test(id)) throw new BadLinkError('the link is incomplete')
+	const response = await fetch(`/api/shared/${id}`, { credentials: 'omit', signal })
+	if (response.status === 404) throw new BadLinkError('this link has been removed or does not exist')
+	if (!response.ok) throw new BadLinkError('the presentation could not be loaded; try again later')
+	return readSharedDeck(await response.json())
+}

@@ -31,7 +31,7 @@ import { SaveStatus } from '../model/persist'
 import { getSlides } from '../model/slides'
 import { useStudio } from './context'
 import { presentHere, presentWithApp, startIndex } from './presenting'
-import { shareDeck } from './sharing'
+import { useSharePresentation } from './ShareDialog'
 import { $inspector, InspectorTab } from './state'
 
 export function RazzleMenuPanel() {
@@ -396,24 +396,10 @@ function PresentButton() {
 
 /** A link that carries the deck (src/model/share.ts), copied to the clipboard. */
 function ShareButton() {
-	const editor = useEditor()
-	const { deck, sync } = useStudio()
-	const toasts = useToasts()
-	const [busy, setBusy] = useState(false)
+	const { share, busy } = useSharePresentation()
 	return (
-		<TldrawUiButton
-			type="normal"
-			className="rz-top-btn"
-			disabled={busy}
-			title="Copy a link that carries the whole deck: anyone with it can view the talk"
-			onClick={async () => {
-				setBusy(true)
-				await shareDeck(editor, deck, sync?.$title.get() ?? deck.title, sync?.flush, (t) =>
-					toasts.addToast(t)
-				)
-				setBusy(false)
-			}}
-		>
+		<TldrawUiButton type="normal" className="rz-top-btn" disabled={busy}
+			title="Share a public link to view this presentation" onClick={share}>
 			<TldrawUiButtonIcon icon="link" small />
 			<TldrawUiButtonLabel>Share</TldrawUiButtonLabel>
 		</TldrawUiButton>

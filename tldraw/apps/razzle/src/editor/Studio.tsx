@@ -17,7 +17,7 @@ import { StudioContext } from './context'
 import { LIBRARY_DRAG_TYPE, LibraryPanel, libraryItem } from './LibraryPanel'
 import { insertLibraryItem } from './library'
 import { presentHere, presentWithApp } from './presenting'
-import { shareDeck } from './sharing'
+import { ShareActionBridge } from './ShareDialog'
 import { addSlide, currentSlide, zoomToSlide } from './slideOps'
 import { SlidesPanel } from './SlidesPanel'
 import { SpeechPanel } from './SpeechPanel'
@@ -148,7 +148,6 @@ function StudioEditor({ opened, onOpenDecks }: { opened: Exclude<Opened, { kind:
 			await sync?.flush()
 			presentHere(editor, deck.id)
 		}
-		studioHooks.share = () => void shareDeck(editor, deck, current().title, sync?.flush, (t) => toast?.(t))
 	}, [editor, sync, deck, onOpenDecks])
 
 	// PageUp / PageDown move between slides (arrows keep nudging shapes).
@@ -242,6 +241,7 @@ function Panels({ left, drawer, right }: { left?: HTMLElement | null; drawer?: H
 	return (
 		<>
 			<Notifier />
+			<ShareActionBridge />
 			{left && createPortal(<SlidesPanel />, left)}
 			{drawer && libraryOpen && createPortal(<LibraryPanel />, drawer)}
 			{right &&
@@ -268,15 +268,12 @@ function Panels({ left, drawer, right }: { left?: HTMLElement | null; drawer?: H
 }
 
 let notify: ((title: string, description?: string) => void) | null = null
-let toast: ReturnType<typeof useToasts>['addToast'] | null = null
 function Notifier() {
 	const toasts = useToasts()
 	useEffect(() => {
 		notify = (title, description) => toasts.addToast({ title, description, severity: 'error' })
-		toast = toasts.addToast
 		return () => {
 			notify = null
-			toast = null
 		}
 	}, [toasts])
 	return null

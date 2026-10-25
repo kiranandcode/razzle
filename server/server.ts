@@ -27,6 +27,7 @@ import {
   type Workflow, type Mode, type NavRequest, type PresState, type AgentStatus, type NavSource,
 } from './state.ts'
 import { deliveryPatches } from './delivery.ts'
+import { publishShare, listShares, SHARE_ID } from './shares.ts'
 import { codexJSON } from './codex.ts'
 import { noteItems, notePatches, noteBaseline, NOTES_PROMPT, NOTES_SCHEMA, type Utterance, type Take } from './notes.ts'
 import { escapeHtml, expandLibraryRefs, libraryEntries, validateSlide, newId, type Json } from './slides.ts'
@@ -63,6 +64,7 @@ async function writeAtomic(file: string, data: unknown) {
 }
 
 const deckFile = (id: string) => path.join(DECKS, `${id}.json`)
+const SHARES = process.env.RAZZLE_SHARES_DIR ?? path.join(DECKS, 'shares')
 const takeDir = (id: string) => path.join(DECKS, id, 'takes')
 
 async function readDeck(id: string): Promise<Deck | null> {
@@ -601,6 +603,17 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   const m = req.method ?? 'GET'
   const deckMatch = p.match(/^\/api\/decks\/([^/]+)(?:\/(takes|notes|slides|speech))?$/)
 
+  if (p === '/api/shares' && m === 'POST') {
+    try { return json(res, 201, await publishShare(SHARES, await body(req))) }
+    catch (e) { return json(res, 400, { error: (e as Error).message }) }
+  }
+  if (p === '/api/shares' && m === 'GET') return json(res, 200, await listShares(SHARES, url.searchParams.get('deck') ?? ''))
+  const shareId = p.match(/^\/api\/shares\/([A-Za-z0-9_-]+)$/)?.[1]
+  if (shareId && SHARE_ID.test(shareId) && m === 'DELETE') {
+    await fsp.rm(path.join(SHARES, shareId), { recursive: true, force: true })
+    return json(res, 200, { ok: true })
+  }
+
   if (p === '/api/decks' && m === 'GET') return json(res, 200, await listDecks())
   if (deckMatch) {
     const id = decodeURIComponent(deckMatch[1])
@@ -721,6 +734,16 @@ const auth = process.env.RAZZLE_HTPASSWD
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://x')
   try {
+    // Only published snapshots bypass sign-in; editing, discovery and AI remain private.
+    const shared = url.pathname.match(/^\/api\/shared\/([A-Za-z0-9_-]+)$/)?.[1]
+    if (shared && SHARE_ID.test(shared) && (req.method === 'GET' || req.method === 'HEAD')) {
+      const file = path.join(SHARES, shared, 'deck.json')
+      const data = await (req.method === 'HEAD' ? fsp.stat(file) : fsp.readFile(file)).catch(() => null)
+      if (!data) return json(res, 404, { error: 'This presentation was removed or the link is incorrect.' })
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-robots-tag': 'noindex' })
+      res.end(Buffer.isBuffer(data) ? data : undefined)
+      return
+    }
     if (auth && !await auth.gate(req, res, url.pathname)) return
     if (url.pathname.startsWith('/api/')) await api(req, res, url)
     else if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname.startsWith('/models/')) await serveModel(req, res, decodeURIComponent(url.pathname.slice('/models/'.length)))

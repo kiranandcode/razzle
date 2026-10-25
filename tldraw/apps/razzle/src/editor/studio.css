@@ -997,3 +997,10 @@
 .rz-timeline-build { position: absolute; top: 0; z-index: 2; width: 28px; height: 24px; margin: 3px; border: 0; border-radius: 4px; background: var(--tl-color-selected); color: var(--tl-color-selected-contrast) !important; cursor: ew-resize !important; touch-action: none; }
 .rz-timeline-build[data-effect='disappear'] { background: #a45454; }
 .rz-timeline-build[data-effect='fade'] { background: #687fa4; }
+
+.rz-share-dialog { max-width: 520px; font: 13px/1.5 Inter, sans-serif; }
+.rz-share-dialog p { margin: 0 0 12px; }
+.rz-share-item { border-top: 1px solid var(--color-divider); padding: 12px 0; }
+.rz-share-item input { display: block; box-sizing: border-box; width: 100%; margin: 6px 0; padding: 8px; font: inherit; color: inherit; background: var(--color-background); border: 1px solid var(--color-divider); border-radius: 4px; }
+.rz-share-actions { display: flex; gap: 8px; }
+.rz-share-actions a { text-decoration: none; }

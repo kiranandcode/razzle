@@ -25,11 +25,17 @@ decks/       <deckId>.json  (+ <deckId>/takes/*.json recordings)
 
 `http://localhost:7878`. Serves the built studio (`tldraw/apps/razzle/dist`, override `RAZZLE_STATIC`) at `/`, `shared/` at `/razzle-shared/`, the browser speech models (`RAZZLE_MODELS_DIR`, default `<repo>/models`) at `/models/`, the API at `/api`, and a WebSocket at `/ws`.
 
+Published links open `/#/view?s=<token>` on the public site. The authenticated studio publishes frozen snapshots into `RAZZLE_SHARES_DIR` (default `<decks>/shares`). Snapshots omit hidden slides, off-slide shapes, and narration metadata; build animations remain. Removing a link prevents future fetches, but cannot remove copies already downloaded. The public proxy exposes only GET/HEAD under `/api/shared/`. Existing self-contained `/#/view?d=...` links still work.
+
 ### HTTP
 
 | method | path | body / result |
 |---|---|---|
 | GET | `/api/decks` | `[{id, title, updatedAt, slideCount}]` |
+| POST | `/api/shares` | `Deck` → `{id, deckId, title, createdAt}`; publish a frozen audience copy (authentication required) |
+| GET | `/api/shares?deck=:id` | published links for a deck (authentication required) |
+| DELETE | `/api/shares/:id` | revoke a published link (authentication required) |
+| GET / HEAD | `/api/shared/:id` | published audience snapshot; public, unlisted, no AI |
 | GET | `/api/decks/:id` | `Deck` |
 | PUT | `/api/decks/:id` | `Deck` → `{ok, updatedAt}`; broadcasts `deck-updated` |
 | POST | `/api/decks/:id/slides` | `{slide, hidden?}`: append one slide written as PPTist-style JSON (library refs `{type:'library', ref, left, top, texts?}` allowed), converted to a tldraw frame in the next grid cell → `{slideIndex, frameId}` |

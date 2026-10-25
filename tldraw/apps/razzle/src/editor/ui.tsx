@@ -76,7 +76,7 @@ const LABELS: Record<string, string> = {
 	'action.razzle.export-reveal': 'reveal.js (.html)',
 	'action.razzle.export-pdf': 'PDF (print)',
 	'action.razzle.present-here': 'Present in this browser',
-	'action.razzle.share': 'Copy a link to this talk',
+	'action.razzle.share': 'Share presentation',
 	'menu.razzle.export': 'Export deck',
 }
 
