@@ -37,6 +37,10 @@
 .rz-stage .tl-frame-heading-hit-area {
 	display: none !important;
 }
+.rz-stage .tl-canvas-overlays {
+	/* Presentation screens never show editor hover outlines or selection handles. */
+	display: none;
+}
 .rz-stage .tl-frame__body {
 	/* exactly the slide: no outline, no half-pixel overhang past the slide's own background */
 	stroke: none;
